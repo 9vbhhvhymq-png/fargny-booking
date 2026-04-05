@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fargny Calendar</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'DM Sans', 'Segoe UI', sans-serif; background: #F5F0EB; min-height: 100vh; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #D4C5B5; border-radius: 3px; }
+</style>
+</head>
+<body>
+<div id="public-calendar-root"></div>
+<script>
+(function(){
+  var h = React.createElement;
+  var useState = React.useState;
+  var Fragment = React.Fragment;
+
+  var FAMILY_BRANCHES = [
+    { id: 1, name: "Henk", color: "#B85042" },
+    { id: 2, name: "Daan", color: "#4A7C59" },
+    { id: 3, name: "Remy", color: "#3B6B9E" },
+    { id: 4, name: "Frans", color: "#C4853B" },
+    { id: 5, name: "Marianne", color: "#7B5EA7" },
+    { id: 6, name: "Tom", color: "#2E8B8B" },
+    { id: 7, name: "Lino", color: "#C75B7A" },
+    { id: 8, name: "Flop", color: "#5B7553" },
+    { id: 9, name: "Bertrand", color: "#8B6F47" },
+  ];
+
+  var COLORS = {
+    bg: '#F5F0EB', text: '#2C1810', muted: '#8B7D6B', border: '#E0D8CF',
+    white: '#FFFFFF', accent: '#B85042', success: '#4A7C59', warning: '#C4853B',
+    board: '#5B21B6', openToShare: '#EAB308',
+  };
+
+  var T = {
+    en: {
+      title: "Fargny Calendar", subtitle: "Holiday House Overview",
+      mon:"Mon",tue:"Tue",wed:"Wed",thu:"Thu",fri:"Fri",sat:"Sat",sun:"Sun",
+      close:"Close", branch:"Branch", phase:"Phase", week:"Week",
+      clanName:"Clan Booking", priorityName:"Priority Booking", regularName:"Regular Booking",
+      boardBookings:"Board Booking", openToShare:"Open to share",
+      remark:"Remark", whoJoining:"Joining:", contactPerson:"Contact",
+      pendingCancellation:"Cancellation pending", adminBooking:"via admin",
+      participants:"participants", noBookings:"No bookings for this period",
+      legend:"Legend", viewOnly:"View-only calendar — log in to book",
+    },
+    nl: {
+      title: "Fargny Kalender", subtitle: "Vakantiehuis Overzicht",
+      mon:"Ma",tue:"Di",wed:"Wo",thu:"Do",fri:"Vr",sat:"Za",sun:"Zo",
+      close:"Sluiten", branch:"Stam", phase:"Fase", week:"Week",
+      clanName:"Stamboeking", priorityName:"Prioriteitsboeking", regularName:"Reguliere Boeking",
+      boardBookings:"Bestuurweekend", openToShare:"Open om te delen",
+      remark:"Opmerking", whoJoining:"Meedoen:", contactPerson:"Contact",
+      pendingCancellation:"Annulering in behandeling", adminBooking:"via beheerder",
+      participants:"deelnemers", noBookings:"Geen boekingen in deze periode",
+      legend:"Legenda", viewOnly:"Alleen-lezen kalender — log in om te boeken",
+    },
+  };
+
+  var MONTHS_SHORT = {
+    en: ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
+    nl: ['Jan','Feb','Mrt','Apr','Mei','Jun','Jul','Aug','Sep','Okt','Nov','Dec'],
+  };
+  var FULL_MONTHS = {
+    en: ['January','February','March','April','May','June','July','August','September','October','November','December'],
+    nl: ['Januari','Februari','Maart','April','Mei','Juni','Juli','Augustus','September','Oktober','November','December'],
+  };
+
+  function toISO(date) {
+    return date.getFullYear()+'-'+String(date.getMonth()+1).padStart(2,'0')+'-'+String(date.getDate()).padStart(2,'0');
+  }
+  function formatDate(iso,lang){if(!iso)return'';var p=iso.split('-');return parseInt(p[2])+' '+MONTHS_SHORT[lang][parseInt(p[1])-1];}
+  function formatFullDate(iso,lang){if(!iso)return'';var p=iso.split('-');return parseInt(p[2])+' '+MONTHS_SHORT[lang][parseInt(p[1])-1]+' '+p[0];}
+  function shortName(fullName){if(!fullName)return'';var parts=fullName.split(' ');return parts[0];}
+  function getPhaseName(p,t){return{clan:t.clanName,priority:t.priorityName,regular:t.regularName,board:t.boardBookings}[p]||p;}
+
+  function generateWeeks(year) {
+    var weeks=[], d=new Date(year,0,1);
+    while(d.getDay()!==6) d.setDate(d.getDate()+1);
+    var weekNum=1;
+    while(d.getFullYear()<=year){
+      var start=new Date(d), end=new Date(d); end.setDate(end.getDate()+6);
+      if(start.getFullYear()!==year) break;
+      weeks.push({id:year+'-W'+String(weekNum).padStart(2,'0'),weekNum:weekNum,start:toISO(start),end:toISO(end),month:start.getMonth()});
+      d.setDate(d.getDate()+7); weekNum++;
+    }
+    return weeks;
+  }
+
+  function loadBookings() { try { return JSON.parse(localStorage.getItem('fargny_bookings') || '[]'); } catch(e) { return []; } }
+  function loadBoardEvents() { try { return JSON.parse(localStorage.getItem('fargny_board_events') || '[]'); } catch(e) { return []; } }
+  function loadUsers() { try { return JSON.parse(localStorage.getItem('fargny_users') || '[]'); } catch(e) { return []; } }
+
+  function PublicCalendar() {
+    var _lang = useState('en'), lang = _lang[0], setLang = _lang[1];
+    var t = T[lang];
+    var now = new Date();
+    var _calMonth = useState(now.getMonth()), calMonth = _calMonth[0], setCalMonth = _calMonth[1];
+    var _calYear = useState(now.getFullYear()), calYear = _calYear[0], setCalYear = _calYear[1];
+    var _popup = useState(null), popup = _popup[0], setPopup = _popup[1];
+    var today = toISO(now);
+
+    var bookings = loadBookings();
+    var boardEvents = loadBoardEvents();
+    var registeredUsers = loadUsers();
+    var weeks = generateWeeks(calYear);
+
+    // All bookings visible in public view (only confirmed or pending_cancellation)
+    var visibleBookings = bookings.filter(function(b) {
+      return b.status === 'confirmed' || b.status === 'pending_cancellation';
+    });
+
+    var goNext = function(){ if(calMonth===11){ setCalMonth(0); setCalYear(function(y){return y+1;}); } else setCalMonth(function(m){return m+1;}); };
+    var goPrev = function(){ if(calMonth===0){ setCalMonth(11); setCalYear(function(y){return y-1;}); } else setCalMonth(function(m){return m-1;}); };
+
+    var daysInMonth = new Date(calYear, calMonth+1, 0).getDate();
+    var firstOfMonth = new Date(calYear, calMonth, 1);
+    var startDow = (firstOfMonth.getDay()+6)%7;
+    var cells = [];
+    for(var i=0; i<startDow; i++) cells.push(null);
+    for(var d=1; d<=daysInMonth; d++) cells.push(d);
+    while(cells.length%7!==0) cells.push(null);
+
+    // Build items including board events
+    var allItems = visibleBookings.map(function(b){
+      var w = weeks.find(function(wk){ return wk.id===b.week_id; });
+      return { type:'booking', data:b, start:b.custom_start||(w?w.start:''), end:b.custom_end||(w?w.end:'') };
+    });
+    (boardEvents||[]).forEach(function(ev){
+      allItems.push({ type:'board', data:ev, start:ev.start, end:ev.end });
+    });
+
+    var dayBookings = {};
+    for(var dd=1; dd<=daysInMonth; dd++){
+      var ds = calYear+'-'+String(calMonth+1).padStart(2,'0')+'-'+String(dd).padStart(2,'0');
+      dayBookings[dd] = allItems.filter(function(item){ return ds>=item.start && ds<=item.end; });
+    }
+
+    var rows = [];
+    for(var ri=0; ri<cells.length; ri+=7) rows.push(cells.slice(ri, ri+7));
+    var dayNames = [t.mon, t.tue, t.wed, t.thu, t.fri, t.sat, t.sun];
+
+    var navBtnStyle = { padding:'8px 16px', border:'1.5px solid '+COLORS.border, borderRadius:8, background:COLORS.white, cursor:'pointer', fontSize:16, color:COLORS.text, fontFamily:"'DM Sans',sans-serif" };
+
+    // Year selector range
+    var yearOptions = [];
+    for(var y=calYear-2; y<=calYear+2; y++) yearOptions.push(y);
+
+    return h('div', { style:{ minHeight:'100vh', background:COLORS.bg, fontFamily:"'DM Sans',sans-serif" } },
+      // Header
+      h('div', { style:{ background:COLORS.white, borderBottom:'1px solid '+COLORS.border, padding:'16px 24px', display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:12 } },
+        h('div', { style:{ display:'flex', alignItems:'baseline', gap:12 } },
+          h('h1', { style:{ fontFamily:"'Playfair Display',Georgia,serif", fontSize:26, fontWeight:700, color:COLORS.text, margin:0 } }, t.title),
+          h('span', { style:{ fontSize:13, color:COLORS.muted } }, t.subtitle)
+        ),
+        h('div', { style:{ display:'flex', alignItems:'center', gap:8 } },
+          h('span', { style:{ fontSize:11, color:COLORS.muted, fontStyle:'italic' } }, t.viewOnly),
+          h('button', { onClick:function(){ setLang(function(l){ return l==='en'?'nl':'en'; }); },
+            style:{ background:'none', border:'1px solid '+COLORS.border, borderRadius:8, padding:'4px 12px', cursor:'pointer', fontSize:13, color:COLORS.muted, fontFamily:"'DM Sans',sans-serif" } },
+            lang==='en'?'NL':'EN')
+        )
+      ),
+
+      // Calendar body
+      h('div', { style:{ maxWidth:960, margin:'0 auto', padding:'24px 20px' } },
+        // Navigation
+        h('div', { style:{ display:'flex', alignItems:'center', justifyContent:'center', gap:16, marginBottom:20 } },
+          h('button', { onClick:goPrev, style:navBtnStyle }, '\u25C0'),
+          h('h2', { style:{ fontSize:20, fontWeight:700, color:COLORS.text, fontFamily:"'Playfair Display',Georgia,serif", margin:0, minWidth:220, textAlign:'center' } },
+            FULL_MONTHS[lang][calMonth]+' '),
+          h('select', { value:calYear, onChange:function(e){ setCalYear(parseInt(e.target.value)); },
+            style:{ fontSize:20, fontWeight:700, color:COLORS.text, fontFamily:"'Playfair Display',Georgia,serif", background:'none', border:'none', cursor:'pointer', outline:'none' } },
+            yearOptions.map(function(y){ return h('option', { key:y, value:y }, y); })
+          ),
+          h('button', { onClick:goNext, style:navBtnStyle }, '\u25B6')
+        ),
+
+        // Legend
+        h('div', { style:{ display:'flex', flexWrap:'wrap', gap:12, marginBottom:16, padding:'12px 16px', background:COLORS.white, borderRadius:10, boxShadow:'0 1px 4px rgba(0,0,0,0.03)' } },
+          FAMILY_BRANCHES.map(function(br){
+            return h('div', { key:br.id, style:{ display:'flex', alignItems:'center', gap:4, fontSize:11, color:COLORS.text } },
+              h('div', { style:{ width:10, height:10, borderRadius:3, background:br.color } }),
+              br.name
+            );
+          }),
+          h('div', { style:{ display:'flex', alignItems:'center', gap:4, fontSize:11, color:COLORS.text } },
+            h('div', { style:{ width:10, height:10, borderRadius:3, background:COLORS.openToShare } }),
+            t.openToShare
+          ),
+          h('div', { style:{ display:'flex', alignItems:'center', gap:4, fontSize:11, color:COLORS.text } },
+            h('div', { style:{ width:10, height:10, borderRadius:3, background:COLORS.board } }),
+            t.boardBookings
+          )
+        ),
+
+        // Calendar grid
+        h('div', { style:{ background:COLORS.white, borderRadius:14, padding:20, boxShadow:'0 1px 8px rgba(0,0,0,0.04)' } },
+          h('div', { style:{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:2, marginBottom:4 } },
+            dayNames.map(function(name){
+              return h('div', { key:name, style:{ textAlign:'center', fontSize:11, fontWeight:700, color:COLORS.muted, padding:'8px 0', textTransform:'uppercase', letterSpacing:'0.5px' } }, name);
+            })
+          ),
+          rows.map(function(row, rowIdx){
+            return h('div', { key:rowIdx, style:{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:2 } },
+              row.map(function(day, ci){
+                if(!day) return h('div', { key:'e'+ci, style:{ minHeight:64 } });
+                var bks = dayBookings[day] || [];
+                var isToday = (calYear+'-'+String(calMonth+1).padStart(2,'0')+'-'+String(day).padStart(2,'0')) === today;
+                return h('div', { key:day, style:{ minHeight:64, padding:'3px 2px', position:'relative', border:isToday?'2px solid '+COLORS.accent:'2px solid transparent', borderRadius:6 } },
+                  h('div', { style:{ fontSize:12, fontWeight:isToday?700:400, color:COLORS.text, textAlign:'center', marginBottom:2 } }, day),
+                  bks.slice(0,3).map(function(item, bi){
+                    var isBoard = item.type==='board';
+                    var b = item.data;
+                    var barColor, label, isPending = false;
+                    if(isBoard){ barColor=COLORS.board; label=b.name; }
+                    else {
+                      var br = FAMILY_BRANCHES.find(function(x){ return x.id===b.branch_id; });
+                      isPending = b.status==='pending_cancellation';
+                      barColor = b.open_to_share ? COLORS.openToShare : isPending ? (br?br.color:'#ccc')+'40' : (br?br.color:'#ccc');
+                      label = shortName(b.user_name) + (b.open_to_share?' \uD83E\uDD1D':'');
+                    }
+                    var prevDay = ci>0 ? row[ci-1] : null;
+                    var nextDay = ci<6 ? row[ci+1] : null;
+                    var itemId = isBoard ? 'board_'+b.id : b.id;
+                    var prevHas = prevDay && (dayBookings[prevDay]||[]).some(function(x){ return (x.type==='board'?'board_'+x.data.id:x.data.id)===itemId; });
+                    var nextHas = nextDay && (dayBookings[nextDay]||[]).some(function(x){ return (x.type==='board'?'board_'+x.data.id:x.data.id)===itemId; });
+                    var radius = (!prevHas?'4px ':'0 ')+(!nextHas?'4px ':'0 ')+(!nextHas?'4px ':'0 ')+(!prevHas?'4px':'0');
+                    return h('div', { key:itemId+'_'+bi, onClick:function(e){ e.stopPropagation(); setPopup(item); },
+                      style:{ height:16, marginBottom:1, background:barColor+'CC', borderRadius:radius, cursor:'pointer', display:'flex', alignItems:'center', overflow:'hidden', paddingLeft:!prevHas?3:0 } },
+                      !prevHas && h('span', { style:{ fontSize:8, fontWeight:700, color:'white', whiteSpace:'nowrap', textOverflow:'ellipsis', overflow:'hidden', textDecoration:isPending?'line-through':'none' } }, label)
+                    );
+                  })
+                );
+              })
+            );
+          })
+        )
+      ),
+
+      // Popup overlay
+      popup && h('div', { style:{ position:'fixed', inset:0, background:'rgba(0,0,0,0.2)', zIndex:300, display:'flex', alignItems:'center', justifyContent:'center' }, onClick:function(){ setPopup(null); } },
+        h('div', { onClick:function(e){ e.stopPropagation(); }, style:{ background:COLORS.white, borderRadius:14, padding:24, minWidth:280, maxWidth:400, boxShadow:'0 8px 32px rgba(0,0,0,0.15)', animation:'fadeIn 0.2s ease' } },
+          (function(){
+            if(popup.type==='board'){
+              var ev = popup.data;
+              return h(Fragment, null,
+                h('h4', { style:{ fontSize:16, fontWeight:700, color:COLORS.board, margin:'0 0 8px 0' } }, '\uD83D\uDC51 '+ev.name),
+                h('div', { style:{ fontSize:13, color:COLORS.text } }, formatDate(ev.start,lang)+' \u2013 '+formatDate(ev.end,lang)),
+                ev.desc && h('div', { style:{ fontSize:13, color:COLORS.muted, marginTop:6, fontStyle:'italic' } }, ev.desc),
+                h('div', { style:{ fontSize:12, color:COLORS.board, marginTop:8 } }, (ev.participants||[]).length+' '+t.participants),
+                h('button', { onClick:function(){ setPopup(null); }, style:{ marginTop:16, width:'100%', padding:'10px 0', background:COLORS.bg, border:'none', borderRadius:10, fontSize:14, fontWeight:500, color:'#5A4D40', cursor:'pointer', fontFamily:"'DM Sans',sans-serif" } }, t.close)
+              );
+            }
+            var b = popup.data;
+            var br = FAMILY_BRANCHES.find(function(x){ return x.id===b.branch_id; });
+            var w = weeks.find(function(wk){ return wk.id===b.week_id; });
+            var isPending = b.status==='pending_cancellation';
+            var linkedNames = (b.linked_members||[]).map(function(email){
+              var u = (registeredUsers||[]).find(function(x){ return x.email===email; });
+              return u ? u.name : email;
+            });
+            return h(Fragment, null,
+              h('div', { style:{ display:'flex', alignItems:'center', gap:8, marginBottom:12 } },
+                h('div', { style:{ width:12, height:12, borderRadius:3, background:b.open_to_share?COLORS.openToShare:(br?br.color:'#ccc') } }),
+                h('h4', { style:{ fontSize:16, fontWeight:700, color:COLORS.text, margin:0, textDecoration:isPending?'line-through':'none' } }, b.user_name)
+              ),
+              h('div', { style:{ display:'flex', flexDirection:'column', gap:6, fontSize:13, color:COLORS.text } },
+                h('div', null, h('strong', null, t.branch+': '), br?br.name:'?'),
+                h('div', null, h('strong', null, t.phase+': '), getPhaseName(b.phase, t)),
+                w && h('div', null, h('strong', null, t.week+': '), 'W'+w.weekNum+' \u2013 '+formatDate(b.custom_start||w.start,lang)+' \u2013 '+formatDate(b.custom_end||w.end,lang)),
+                b.remark && h('div', { style:{ fontStyle:'italic', color:COLORS.muted } }, h('strong', null, t.remark+': '), b.remark),
+                linkedNames.length>0 && h('div', null, h('strong', null, t.whoJoining+' '), linkedNames.join(', ')),
+                b.open_to_share && h('div', { style:{ color:COLORS.openToShare, fontWeight:600 } }, '\uD83E\uDD1D '+t.openToShare),
+                isPending && h('div', { style:{ color:COLORS.warning, fontWeight:600 } }, '\u23F3 '+t.pendingCancellation),
+                b.admin_booked && h('div', { style:{ color:COLORS.warning, fontSize:12 } }, t.adminBooking)
+              ),
+              h('button', { onClick:function(){ setPopup(null); }, style:{ marginTop:16, width:'100%', padding:'10px 0', background:COLORS.bg, border:'none', borderRadius:10, fontSize:14, fontWeight:500, color:'#5A4D40', cursor:'pointer', fontFamily:"'DM Sans',sans-serif" } }, t.close)
+            );
+          })()
+        )
+      )
+    );
+  }
+
+  ReactDOM.createRoot(document.getElementById('public-calendar-root')).render(h(PublicCalendar));
+})();
+</script>
+</body>
+</html>
