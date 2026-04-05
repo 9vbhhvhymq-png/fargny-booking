@@ -46,6 +46,7 @@ var PHASES = {
   clan: { id: "clan", icon: "\u{1F3E0}", revealable: true },
   priority: { id: "priority", icon: "\u2B50", revealable: true },
   regular: { id: "regular", icon: "\u{1F33F}", revealable: false },
+  board: { id: "board", icon: "\u{1F451}", revealable: false },
 };
 
 var COLORS = {
@@ -54,7 +55,7 @@ var COLORS = {
   board: '#5B21B6', openToShare: '#EAB308',
 };
 
-var PHASE_ORDER = ['clan', 'priority', 'regular'];
+var PHASE_ORDER = ['clan', 'priority', 'regular', 'board'];
 var RATES = { child04: 0, child59: 5, adult: 10 };
 var HOUSE_FEE = 50;
 var CLEANING_FEE = 70;
@@ -90,14 +91,14 @@ var T = {
     appName:"Fargny",subtitle:"Holiday House Booking",signIn:"Sign In",register:"Register",email:"Email address",displayName:"Display name",password:"Password",confirmPassword:"Confirm password",fillAll:"Please fill in all fields",invalidEmail:"Please enter a valid email",pickBranch:"Please select your family branch",pickShareholder:"Select your name",whichBranch:"Which family branch do you belong to?",createAccount:"Create Account",nameTaken:"This person has already registered",invalidLogin:"Invalid email or password",passwordMismatch:"Passwords do not match",signOut:"Sign Out",weeksBooked:"weeks booked",book:"Book",calendar:"Calendar",statistics:"Statistics",bookingPhase:"Booking Phase",year:"Year",myBookings:"My Bookings",noBookingsYet:"No bookings yet",familyBranches:"Family Branches",clickBranch:"Click a branch to see its members",all:"All",noWeeks:"No weeks available",bookBtn:"Book",cancelBtn:"Cancel",yourBooking:"Your booking",branchAlreadyBooked:"Your branch already booked a week",youAlreadyBooked:"You already booked a week",booked:"Booked",bookingCancelled:"Booking cancelled",available:"Available",doubleBooking:"Double booking",noMembers:"No members registered yet",membersRegistered:"members registered",memberRegistered:"member registered",close:"Close",admin:"Admin",adminTitle:"Admin Panel",adminDesc:"Manage bookings, cancellations & payments",owner:"Owner",pickOwner:"Choose an owner...",phase:"Phase",week:"Week",pickWeek:"Choose a week...",clanName:"Clan Booking",clanDesc:"Each family branch picks one week",clanRule:"One week per family branch",priorityName:"Priority Booking",priorityDesc:"Each owner picks one week",priorityRule:"One week per owner",regularName:"Regular Booking",regularDesc:"Book as much as you like",regularRule:"Bookable up to 6 months ahead",revealed:"Revealed",hidden:"Hidden until reveal",hiddenCalNote:"Clan and Priority bookings are not yet revealed. Only your own and Regular bookings are shown.",adminBooking:"via admin",bookOnBehalf:"Book on behalf",loading:"Loading...",emailTab:"Paste Email",manualTab:"Manual",pasteEmail:"Paste the email here...",parseEmail:"Parse Email",parsing:"Reading email...",parsedResult:"Parsed from email",noMatch:"Could not match a registered owner",weekNotFound:"Could not identify the requested week",parseError:"Could not parse the email. Please use manual entry.",confirmBooking:"Confirm Booking",parsedName:"Detected name",parsedWeek:"Requested week",feedback:"Feedback",phaseOpen:"Open",phaseTo:"to",phaseRevealed:"Bookings will be revealed on",phaseVisibleNow:"Bookings are visible immediately",phaseOpensOn:"Opens",phaseClosed:"Closed",phaseRevealedOn:"Bookings were revealed on",regularOpensInfo:"Opens 1 Jan, bookable up to 6 months ahead",weekNotYetOpen:"Opens for booking on",weekBookedByOther:"Already booked",confirmationEmailSent:"A confirmation email will be sent to",requestCancel:"Request cancellation",pendingCancellation:"Cancellation pending",cancelRequested:"Cancellation requested",approveCancellation:"Approve",rejectCancellation:"Reject",pendingCancellations:"Pending Cancellations",cancellationsTab:"Cancellations",paymentsTab:"Payments",cancellationApproved:"Cancellation approved",cancellationRejected:"Cancellation rejected",noPendingCancellations:"No pending cancellations",statsTitle:"Booking Statistics",bookingsPerUser:"Bookings per user",bookingsPerBranch:"Bookings per branch",overallOccupancy:"Overall occupancy",bookingTimeline:"Booking timeline",totalWeeks:"Total weeks",bookedWeeks:"Booked weeks",availableWeeks:"Available weeks",occupancyRate:"Occupancy rate",userName:"User",branchLabel:"Branch",total:"Total",lastLogin:"Last login",bookingCount:"Bookings",adminOnly:"Admin access required",noData:"No data available",mon:"Mon",tue:"Tue",wed:"Wed",thu:"Thu",fri:"Fri",sat:"Sat",sun:"Sun",active:"Active",opens:"Opens",closed:"Closed",
     costs:"Costs",houseFee:"House fee",perNight:"per night",perPerson:"Per person",cleaningFee:"Cleaning fee",totalCost:"Total",notPaid:"Not paid",invoiceSent:"Invoice sent",paid:"Paid",transferTo:"Transfer to",questionsCall:"Questions? Call",child04:"Children 0\u20134 (free)",child59:"Children 5\u20139",adult:"10 years and older",nights:"nights",nightLabel:"Night",saveCosts:"Save",costSummary:"Cost summary",paymentStatus:"Payment status",paymentOverview:"Payment overview",amount:"Amount",filterUnpaid:"Show unpaid only",allPayments:"All",whatsappHelp:"Need help?",bankInstructions:"Transfer the amount to penningmeester@fargny.org \u2014 you will receive an invoice with payment request. Questions? Call Rogier: +31-6-57711402",
     openToShare:"I am open to have other people join me",joinQuestion:"Join?",contactPerson:"Contact",addRemark:"Add a remark (optional)",remarkLabel:"Remark",whoJoining:"Who is joining you?",confirmBookQ:"Are you sure you want to book",yesBook:"Yes, book",checkIn:"Check-in",checkOut:"Check-out",maxNights:"Maximum 7 nights",customDates:"Custom dates",
-    boardBookings:"Board Bookings",specialWeekends:"Special weekends",signUp:"Sign up",signedUp:"Signed up",participants:"participants",boardEventsTab:"Board Events",createBoardEvent:"Create Board Event",eventName:"Event name",eventDesc:"Description",eventStart:"Start date",eventEnd:"End date",noEvents:"No upcoming board events",boardTab:"Board",
+    boardBookings:"Board Bookings",boardDesc:"Book a Fargny community event",boardRule:"Sign up for special weekends",specialWeekends:"Special weekends",signUp:"Sign up",signedUp:"Signed up",participants:"participants",boardEventsTab:"Board Events",createBoardEvent:"Create Board Event",eventName:"Event name",eventDesc:"Description",eventStart:"Start date",eventEnd:"End date",noEvents:"No upcoming board events",boardTab:"Board",
     registerFirst:"Please register first before logging in",
   },
   nl: {
     appName:"Fargny",subtitle:"Vakantiehuis Boekingssysteem",signIn:"Inloggen",register:"Registreren",email:"E-mailadres",displayName:"Weergavenaam",password:"Wachtwoord",confirmPassword:"Wachtwoord bevestigen",fillAll:"Vul alle velden in",invalidEmail:"Voer een geldig e-mailadres in",pickBranch:"Kies je stam",pickShareholder:"Selecteer je naam",whichBranch:"Bij welke stam hoor je?",createAccount:"Account aanmaken",nameTaken:"Deze persoon is al geregistreerd",invalidLogin:"Ongeldig e-mailadres of wachtwoord",passwordMismatch:"Wachtwoorden komen niet overeen",signOut:"Uitloggen",weeksBooked:"weken geboekt",book:"Boeken",calendar:"Kalender",statistics:"Statistieken",bookingPhase:"Boekingsfase",year:"Jaar",myBookings:"Mijn Boekingen",noBookingsYet:"Nog geen boekingen",familyBranches:"Stammen",clickBranch:"Klik op een stam om de leden te zien",all:"Alle",noWeeks:"Geen weken beschikbaar",bookBtn:"Boeken",cancelBtn:"Annuleren",yourBooking:"Jouw boeking",branchAlreadyBooked:"Je stam heeft al een week geboekt",youAlreadyBooked:"Je hebt al een week geboekt",booked:"Geboekt",bookingCancelled:"Boeking geannuleerd",available:"Beschikbaar",doubleBooking:"Dubbele boeking",noMembers:"Nog geen leden geregistreerd",membersRegistered:"leden geregistreerd",memberRegistered:"lid geregistreerd",close:"Sluiten",admin:"Beheerder",adminTitle:"Beheerderspaneel",adminDesc:"Beheer boekingen, annuleringen & betalingen",owner:"Eigenaar",pickOwner:"Kies een eigenaar...",phase:"Fase",week:"Week",pickWeek:"Kies een week...",clanName:"Stamboeking",clanDesc:"Elke stam kiest een week",clanRule:"E\u00e9n week per stam",priorityName:"Prioriteitsboeking",priorityDesc:"Elke eigenaar kiest een week",priorityRule:"E\u00e9n week per eigenaar",regularName:"Reguliere Boeking",regularDesc:"Boek zoveel als je wilt",regularRule:"Boekbaar tot 6 maanden vooruit",revealed:"Onthuld",hidden:"Verborgen tot onthulling",hiddenCalNote:"Stam- en prioriteitsboekingen zijn nog niet onthuld. Alleen je eigen en reguliere boekingen worden getoond.",adminBooking:"via beheerder",bookOnBehalf:"Namens iemand boeken",loading:"Laden...",emailTab:"Email plakken",manualTab:"Handmatig",pasteEmail:"Plak hier de email...",parseEmail:"Email lezen",parsing:"Email wordt gelezen...",parsedResult:"Uit email gehaald",noMatch:"Kon geen geregistreerde eigenaar vinden",weekNotFound:"Kon de gevraagde week niet herkennen",parseError:"Kon de email niet verwerken.",confirmBooking:"Boeking bevestigen",parsedName:"Herkende naam",parsedWeek:"Gevraagde week",feedback:"Feedback",phaseOpen:"Open",phaseTo:"tot",phaseRevealed:"Boekingen worden onthuld op",phaseVisibleNow:"Boekingen zijn direct zichtbaar",phaseOpensOn:"Opent",phaseClosed:"Gesloten",phaseRevealedOn:"Boekingen werden onthuld op",regularOpensInfo:"Opent 1 jan, boekbaar tot 6 maanden vooruit",weekNotYetOpen:"Opent voor boeking op",weekBookedByOther:"Al geboekt",confirmationEmailSent:"Er wordt een bevestigingsmail gestuurd naar",requestCancel:"Annulering aanvragen",pendingCancellation:"Annulering in behandeling",cancelRequested:"Annulering aangevraagd",approveCancellation:"Goedkeuren",rejectCancellation:"Afwijzen",pendingCancellations:"Openstaande annuleringen",cancellationsTab:"Annuleringen",paymentsTab:"Betalingen",cancellationApproved:"Annulering goedgekeurd",cancellationRejected:"Annulering afgewezen",noPendingCancellations:"Geen openstaande annuleringen",statsTitle:"Boekingsstatistieken",bookingsPerUser:"Boekingen per gebruiker",bookingsPerBranch:"Boekingen per stam",overallOccupancy:"Totale bezetting",bookingTimeline:"Boekingstijdlijn",totalWeeks:"Totaal weken",bookedWeeks:"Geboekte weken",availableWeeks:"Beschikbare weken",occupancyRate:"Bezettingsgraad",userName:"Gebruiker",branchLabel:"Stam",total:"Totaal",lastLogin:"Laatste login",bookingCount:"Boekingen",adminOnly:"Beheerdertoegang vereist",noData:"Geen gegevens beschikbaar",mon:"Ma",tue:"Di",wed:"Wo",thu:"Do",fri:"Vr",sat:"Za",sun:"Zo",active:"Actief",opens:"Opent",closed:"Gesloten",
     costs:"Kosten",houseFee:"Huiskosten",perNight:"per nacht",perPerson:"Per persoon",cleaningFee:"Schoonmaakkosten",totalCost:"Totaal",notPaid:"Niet betaald",invoiceSent:"Factuur verstuurd",paid:"Betaald",transferTo:"Overmaken naar",questionsCall:"Vragen? Bel",child04:"Kinderen 0\u20134 (gratis)",child59:"Kinderen 5\u20139",adult:"10 jaar en ouder",nights:"nachten",nightLabel:"Nacht",saveCosts:"Opslaan",costSummary:"Kostenoverzicht",paymentStatus:"Betaalstatus",paymentOverview:"Betalingsoverzicht",amount:"Bedrag",filterUnpaid:"Alleen onbetaald",allPayments:"Alle",whatsappHelp:"Hulp nodig?",bankInstructions:"Maak het bedrag over naar penningmeester@fargny.org \u2014 je ontvangt een factuur met betaalverzoek. Vragen? Bel Rogier: +31-6-57711402",
     openToShare:"Ik sta open om andere mensen te laten aansluiten",joinQuestion:"Meedoen?",contactPerson:"Contact",addRemark:"Opmerking toevoegen (optioneel)",remarkLabel:"Opmerking",whoJoining:"Wie gaat er mee?",confirmBookQ:"Weet je zeker dat je wilt boeken",yesBook:"Ja, boeken",checkIn:"Inchecken",checkOut:"Uitchecken",maxNights:"Maximaal 7 nachten",customDates:"Aangepaste data",
-    boardBookings:"Bestuurweekenden",specialWeekends:"Speciale weekenden",signUp:"Aanmelden",signedUp:"Aangemeld",participants:"deelnemers",boardEventsTab:"Bestuur Events",createBoardEvent:"Bestuursevent aanmaken",eventName:"Eventnaam",eventDesc:"Beschrijving",eventStart:"Startdatum",eventEnd:"Einddatum",noEvents:"Geen aankomende bestuursevenementen",boardTab:"Bestuur",
+    boardBookings:"Bestuurweekenden",boardDesc:"Boek een Fargny community evenement",boardRule:"Meld je aan voor speciale weekenden",specialWeekends:"Speciale weekenden",signUp:"Aanmelden",signedUp:"Aangemeld",participants:"deelnemers",boardEventsTab:"Bestuur Events",createBoardEvent:"Bestuursevent aanmaken",eventName:"Eventnaam",eventDesc:"Beschrijving",eventStart:"Startdatum",eventEnd:"Einddatum",noEvents:"Geen aankomende bestuursevenementen",boardTab:"Bestuur",
     registerFirst:"Registreer eerst voordat je inlogt",
   },
 };
@@ -173,9 +174,10 @@ function getPhaseMeta(phase,t){
     clan:{name:t.clanName,desc:t.clanDesc,rule:t.clanRule,icon:PHASES.clan.icon},
     priority:{name:t.priorityName,desc:t.priorityDesc,rule:t.priorityRule,icon:PHASES.priority.icon},
     regular:{name:t.regularName,desc:t.regularDesc,rule:t.regularRule,icon:PHASES.regular.icon},
+    board:{name:t.boardBookings,desc:t.boardDesc,rule:t.boardRule,icon:PHASES.board.icon},
   }[phase];
 }
-function phaseColor(p){return p==='clan'?'#B85042':p==='priority'?'#C4853B':'#4A7C59';}
+function phaseColor(p){return p==='clan'?'#B85042':p==='priority'?'#C4853B':p==='board'?'#5B21B6':'#4A7C59';}
 function getPhaseName(p,t){return{clan:t.clanName,priority:t.priorityName,regular:t.regularName,board:t.boardBookings}[p]||p;}
 
 function getPhaseStatus(phaseId, cfg){
@@ -191,6 +193,7 @@ function getPhaseStatus(phaseId, cfg){
     if(today<=cfg.priority_end) return 'active';
     return 'closed';
   }
+  if(phaseId==='board') return 'active';
   if(today<cfg.regular_start) return 'upcoming';
   return 'active';
 }
@@ -199,6 +202,7 @@ function getPhaseWindow(phaseId, cfg, lang){
   if(!cfg) return '';
   if(phaseId==='clan') return formatDate(cfg.clan_start,lang)+' \u2013 '+formatDate(cfg.clan_end,lang);
   if(phaseId==='priority') return formatDate(cfg.priority_start,lang)+' \u2013 '+formatDate(cfg.priority_end,lang);
+  if(phaseId==='board') return '';
   return (lang==='nl'?'Opent 1 jan, boekbaar tot 6 maanden vooruit':'Opens 1 Jan, bookable up to 6 months ahead');
 }
 
@@ -469,10 +473,10 @@ function BookingDialog(p){
 // BOOKING VIEW
 // ═══════════════════════════════════════════════════════
 function BookingView(p){
-  var user=p.user,bookings=p.bookings,weeks=p.weeks,year=p.year,setYear=p.setYear,phase=p.phase,setPhase=p.setPhase,phaseConfig=p.phaseConfig,filterMonth=p.filterMonth,setFilterMonth=p.setFilterMonth,branches=p.branches,onSelectBranch=p.onSelectBranch,onShowAdmin=p.onShowAdmin,onBook=p.onBook,onRequestCancel=p.onRequestCancel,onSaveGuests=p.onSaveGuests,boardEvents=p.boardEvents,onSignUpBoard=p.onSignUpBoard,registeredUsers=p.registeredUsers,showToast=p.showToast,t=p.t,lang=p.lang;
+  var user=p.user,bookings=p.bookings,allBookings=p.allBookings||p.bookings,weeks=p.weeks,year=p.year,setYear=p.setYear,phase=p.phase,setPhase=p.setPhase,phaseConfig=p.phaseConfig,filterMonth=p.filterMonth,setFilterMonth=p.setFilterMonth,branches=p.branches,onSelectBranch=p.onSelectBranch,onShowAdmin=p.onShowAdmin,onBook=p.onBook,onRequestCancel=p.onRequestCancel,onSaveGuests=p.onSaveGuests,boardEvents=p.boardEvents,onSignUpBoard=p.onSignUpBoard,registeredUsers=p.registeredUsers,showToast=p.showToast,t=p.t,lang=p.lang;
   var _costBooking=useState(null),costBooking=_costBooking[0],setCostBooking=_costBooking[1];
   var _bookDialog=useState(null),bookDialog=_bookDialog[0],setBookDialog=_bookDialog[1];
-  var myBookings=bookings.filter(function(b){return b.user_id===user.id||b.user_email===user.email;});
+  var myBookings=allBookings.filter(function(b){return b.user_id===user.id||b.user_email===user.email;});
   var myBookingMap={};myBookings.forEach(function(b){if(b.week_id)myBookingMap[b.week_id]=b;});
   var clanBookedByBranch=bookings.find(function(b){return b.branch_id===user.branch_id&&b.phase==='clan'&&b.status==='confirmed';});
   var userBookedPriority=bookings.find(function(b){return (b.user_id===user.id||b.user_email===user.email)&&b.phase==='priority'&&b.status==='confirmed';});
@@ -507,12 +511,13 @@ function BookingView(p){
       h('div',{style:{background:COLORS.white,borderRadius:14,padding:20,boxShadow:'0 1px 8px rgba(0,0,0,0.04)'}},
         h('h3',{style:{fontSize:11,fontWeight:700,color:COLORS.muted,textTransform:'uppercase',letterSpacing:'1px',margin:'0 0 12px 0'}},t.myBookings+' ('+myBookings.length+')'),
         myBookings.length===0?h('p',{style:{fontSize:13,color:'#B0A090',margin:0}},t.noBookingsYet)
-        :h('div',{style:{display:'flex',flexDirection:'column',gap:6}},myBookings.map(function(b){var w=weeks.find(function(wk){return wk.id===b.week_id;});if(!w)return null;
-          var isPending=b.status==='pending_cancellation';var cost=calcBookingCost(b.guests,w.start);
+        :h('div',{style:{display:'flex',flexDirection:'column',gap:6}},myBookings.map(function(b){
+          var bYear=b.year||year;var bWeeks=bYear===year?weeks:generateWeeks(bYear);var w=bWeeks.find(function(wk){return wk.id===b.week_id;});if(!w)return null;
+          var isPending=b.status==='pending_cancellation';var cost=calcBookingCost(b.guests,w.start);var pm=getPhaseMeta(b.phase,t);
           return h('div',{key:b.id,style:{padding:'8px 12px',background:isPending?'#FEF2F2':'#F8F5F2',borderRadius:8,borderLeft:'3px solid '+(isPending?COLORS.warning:b.open_to_share?COLORS.openToShare:userBranch.color),opacity:isPending?0.7:1,cursor:isPending?'default':'pointer'},onClick:isPending?null:function(){setCostBooking(b);}},
-            h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between'}},h('div',{style:{fontSize:13,fontWeight:500,color:COLORS.text,textDecoration:isPending?'line-through':'none'}},formatDate(b.custom_start||w.start,lang)+' \u2014 '+formatDate(b.custom_end||w.end,lang)),paymentBadge(b.payment_status||'not_paid',t)),
+            h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between'}},h('div',{style:{fontSize:13,fontWeight:500,color:COLORS.text,textDecoration:isPending?'line-through':'none'}},(bYear!==year?bYear+' \u00B7 ':'')+formatDate(b.custom_start||w.start,lang)+' \u2014 '+formatDate(b.custom_end||w.end,lang)),paymentBadge(b.payment_status||'not_paid',t)),
             isPending?h('div',{style:{fontSize:11,color:COLORS.warning,marginTop:2,fontWeight:600}},'\u23F3 '+t.pendingCancellation)
-            :h('div',{style:{fontSize:11,color:COLORS.muted,marginTop:2}},'W'+w.weekNum+' \u00B7 '+getPhaseMeta(b.phase,t).name+(b.open_to_share?' \u00B7 \u{1F91D}':'')+(cost.total>CLEANING_FEE?' \u00B7 \u20AC'+cost.total.toFixed(2):'')+(b.admin_booked?' \u00B7 '+t.adminBooking:'')));}))),
+            :h('div',{style:{fontSize:11,color:COLORS.muted,marginTop:2}},'W'+w.weekNum+' \u00B7 '+(pm?pm.name:b.phase)+(b.open_to_share?' \u00B7 \u{1F91D}':'')+(cost.total>CLEANING_FEE?' \u00B7 \u20AC'+cost.total.toFixed(2):'')+(b.admin_booked?' \u00B7 '+t.adminBooking:'')));}))),
       h('div',{style:{background:COLORS.white,borderRadius:14,padding:20,boxShadow:'0 1px 8px rgba(0,0,0,0.04)'}},
         h('h3',{style:{fontSize:11,fontWeight:700,color:COLORS.muted,textTransform:'uppercase',letterSpacing:'1px',margin:'0 0 12px 0'}},t.familyBranches),
         h('div',{style:{display:'flex',flexDirection:'column',gap:4}},FAMILY_BRANCHES.map(function(b){var mc=branchCounts[b.id]||0;
@@ -522,13 +527,16 @@ function BookingView(p){
       user.is_admin&&h('button',{onClick:onShowAdmin,style:{padding:'12px 16px',background:'#C4853B10',border:'1.5px solid #C4853B30',borderRadius:12,fontSize:13,fontWeight:600,color:'#C4853B',cursor:'pointer',display:'flex',alignItems:'center',gap:8,justifyContent:'center',fontFamily:"'DM Sans',sans-serif"}},'\u{1F511} '+t.admin)),
     // MAIN
     h('div',{style:{flex:1,minWidth:0}},
-      boardEvents.length>0&&h('div',{style:{background:COLORS.white,borderRadius:14,padding:16,marginBottom:16,boxShadow:'0 1px 8px rgba(0,0,0,0.04)'}},
-        h('h3',{style:{fontSize:13,fontWeight:700,color:COLORS.board,margin:'0 0 12px 0'}},'\u{1F451} '+t.boardBookings+' \u2014 '+t.specialWeekends),
-        h('div',{style:{display:'flex',flexDirection:'column',gap:8}},boardEvents.map(function(ev){
+      phase==='board'?h('div',{style:{background:COLORS.white,borderRadius:14,padding:20,boxShadow:'0 1px 8px rgba(0,0,0,0.04)'}},
+        h('h3',{style:{fontSize:16,fontWeight:700,color:COLORS.board,margin:'0 0 4px 0',fontFamily:"'Playfair Display',Georgia,serif"}},'\u{1F451} '+t.boardBookings),
+        h('p',{style:{fontSize:13,color:COLORS.muted,margin:'0 0 16px 0'}},t.boardDesc),
+        boardEvents.length===0?h('div',{style:{padding:40,textAlign:'center',color:COLORS.muted}},t.noEvents)
+        :h('div',{style:{display:'flex',flexDirection:'column',gap:10}},boardEvents.map(function(ev){
           var isMember=(ev.participants||[]).indexOf(user.email)>=0;
-          return h('div',{key:ev.id,style:{display:'flex',alignItems:'center',gap:12,padding:'10px 14px',borderRadius:10,background:COLORS.board+'08',borderLeft:'3px solid '+COLORS.board}},
-            h('div',{style:{flex:1}},h('div',{style:{fontSize:14,fontWeight:600,color:COLORS.text}},ev.name),h('div',{style:{fontSize:12,color:COLORS.muted}},formatDate(ev.start,lang)+' \u2013 '+formatDate(ev.end,lang)),ev.desc&&h('div',{style:{fontSize:11,color:COLORS.muted,marginTop:2,fontStyle:'italic'}},ev.desc),h('div',{style:{fontSize:11,color:COLORS.board,marginTop:2}},(ev.participants||[]).length+' '+t.participants)),
-            h('button',{onClick:function(){if(!isMember)onSignUpBoard(ev.id);},disabled:isMember,style:{padding:'6px 14px',background:isMember?COLORS.board+'20':COLORS.board,border:'none',borderRadius:8,fontSize:12,color:isMember?COLORS.board:'white',cursor:isMember?'default':'pointer',fontWeight:600,fontFamily:"'DM Sans',sans-serif"}},isMember?'\u2705 '+t.signedUp:t.signUp));}))),
+          return h('div',{key:ev.id,style:{display:'flex',alignItems:'center',gap:12,padding:'14px 18px',borderRadius:12,background:COLORS.board+'08',borderLeft:'3px solid '+COLORS.board}},
+            h('div',{style:{flex:1}},h('div',{style:{fontSize:15,fontWeight:600,color:COLORS.text}},ev.name),h('div',{style:{fontSize:13,color:COLORS.muted,marginTop:2}},formatDate(ev.start,lang)+' \u2013 '+formatDate(ev.end,lang)),ev.desc&&h('div',{style:{fontSize:12,color:COLORS.muted,marginTop:4,fontStyle:'italic'}},ev.desc),h('div',{style:{fontSize:12,color:COLORS.board,marginTop:4}},(ev.participants||[]).length+' '+t.participants)),
+            h('button',{onClick:function(){if(!isMember)onSignUpBoard(ev.id);},disabled:isMember,style:{padding:'8px 18px',background:isMember?COLORS.board+'20':COLORS.board,border:'none',borderRadius:10,fontSize:13,color:isMember?COLORS.board:'white',cursor:isMember?'default':'pointer',fontWeight:600,fontFamily:"'DM Sans',sans-serif"}},isMember?'\u2705 '+t.signedUp:t.signUp));})))
+      :h(Fragment,null,
       h('div',{style:{display:'flex',gap:4,marginBottom:16,flexWrap:'wrap'}},
         h('button',{onClick:function(){setFilterMonth(null);},style:{padding:'6px 12px',borderRadius:8,border:'none',background:filterMonth===null?COLORS.text:'#E8DFD5',color:filterMonth===null?COLORS.white:COLORS.muted,fontSize:12,fontWeight:600,cursor:'pointer',fontFamily:"'DM Sans',sans-serif"}},t.all),
         MONTHS_SHORT[lang].map(function(m,i){if(!weeks.some(function(w){return w.month===i;}))return null;
@@ -540,7 +548,7 @@ function BookingView(p){
           if(week.month!==prevMonth) acc.push(h('div',{key:'month-'+week.month,style:{padding:'14px 16px 6px 16px',fontSize:13,fontWeight:700,color:COLORS.muted,textTransform:'uppercase',letterSpacing:'0.5px',borderTop:i>0?'1px solid #F0EBE5':'none',marginTop:i>0?4:0}},MONTHS_SHORT[lang][week.month]+' '+year));
           acc.push(h(WeekRow,{key:week.id,week:week,myBooking:myBookingMap[week.id],allBookings:bookings,onBook:function(w){setBookDialog({week:w,phase:phase});},onRequestCancel:onRequestCancel,user:user,phase:phase,clanBookedByBranch:clanBookedByBranch,userBookedPriority:userBookedPriority,phaseActive:getPhaseStatus(phase,phaseConfig)==='active'||user.is_admin,t:t,lang:lang}));
           return acc;
-        },[]))));
+        },[])))));
 }
 
 // ═══════════════════════════════════════════════════════
@@ -825,7 +833,7 @@ function App(){
         h('button',{onClick:toggleLang,style:{padding:'6px 12px',border:'1.5px solid '+COLORS.border,borderRadius:8,background:COLORS.white,fontSize:12,fontWeight:600,color:COLORS.muted,cursor:'pointer',fontFamily:"'DM Sans',sans-serif"}},lang==='en'?'\u{1F1F3}\u{1F1F1} NL':'\u{1F1EC}\u{1F1E7} EN'),
         h('div',{style:{textAlign:'right'}},h('div',{style:{fontSize:13,fontWeight:600,color:COLORS.text}},user.name),h('div',{style:{fontSize:11,color:userBranch.color,fontWeight:600}},userBranch.name)),
         h('button',{onClick:function(){setUser(null);},style:{padding:'7px 14px',background:'transparent',border:'1.5px solid #D4C5B5',borderRadius:8,fontSize:12,color:COLORS.muted,cursor:'pointer',fontWeight:500,fontFamily:"'DM Sans',sans-serif"}},t.signOut))),
-    view==='book'&&h(BookingView,{user:user,bookings:yearBookings,weeks:weeks,year:year,setYear:function(y){setYear(y);setFilterMonth(null);},phase:phase,setPhase:setPhase,phaseConfig:phaseConfig,filterMonth:filterMonth,setFilterMonth:setFilterMonth,branches:FAMILY_BRANCHES,onSelectBranch:setSelectedBranch,onShowAdmin:function(){setShowAdmin(true);},onBook:handleBook,onRequestCancel:handleRequestCancel,onSaveGuests:handleSaveGuests,boardEvents:boardEvents,onSignUpBoard:handleSignUpBoard,registeredUsers:registeredUsers,showToast:showToast,t:t,lang:lang}),
+    view==='book'&&h(BookingView,{user:user,bookings:yearBookings,allBookings:bookings,weeks:weeks,year:year,setYear:function(y){setYear(y);setFilterMonth(null);},phase:phase,setPhase:setPhase,phaseConfig:phaseConfig,filterMonth:filterMonth,setFilterMonth:setFilterMonth,branches:FAMILY_BRANCHES,onSelectBranch:setSelectedBranch,onShowAdmin:function(){setShowAdmin(true);},onBook:handleBook,onRequestCancel:handleRequestCancel,onSaveGuests:handleSaveGuests,boardEvents:boardEvents,onSignUpBoard:handleSignUpBoard,registeredUsers:registeredUsers,showToast:showToast,t:t,lang:lang}),
     view==='calendar'&&h(CalendarView,{user:user,bookings:yearBookings,weeks:weeks,year:year,phaseConfig:phaseConfig,boardEvents:boardEvents,registeredUsers:registeredUsers,t:t,lang:lang}),
     view==='feedback'&&h(FeedbackView,{t:t,lang:lang}),
     view==='statistics'&&h(StatisticsView,{user:user,bookings:yearBookings,weeks:weeks,year:year,userStats:userStats,t:t,lang:lang}),
