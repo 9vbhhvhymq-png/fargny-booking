@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fargny Calendar</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'DM Sans', 'Segoe UI', sans-serif; background: #F5F0EB; min-height: 100vh; }
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #D4C5B5; border-radius: 3px; }
+</style>
+</head>
+<body>
+<div id="public-calendar-root"></div>
+<script type="text/babel">
+
+const API_BASE = window.location.origin + '/api';
+const COLORS = {
+  bg: '#F5F0EB', text: '#2C1810', muted: '#8B7D6B', border: '#E0D8CF',
+  white: '#FFFFFF', accent: '#B85042', success: '#4A7C59', warning: '#C4853B',
+  board: '#5B21B6', openToShare: '#EAB308',
+};
+const FAMILY_BRANCHES = [
+  { id: 1, name: "Henk", color: "#B85042" },
+  { id: 2, name: "Daan", color: "#4A7C59" },
+  { id: 3, name: "Remy", color: "#3B6B9E" },
+  { id: 4, name: "Frans", color: "#C4853B" },
+  { id: 5, name: "Marianne", color: "#7B5EA7" },
+  { id: 6, name: "Tom", color: "#2E8B8B" },
+  { id: 7, name: "Lino", color: "#C75B7A" },
+  { id: 8, name: "Flop", color: "#5B7553" },
+  { id: 9, name: "Bertrand", color: "#8B6F47" },
+];
+
+const MONTHS_SHORT = {
+  en: ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
+  nl: ['Jan','Feb','Mrt','Apr','Mei','Jun','Jul','Aug','Sep','Okt','Nov','Dec'],
+};
+const FULL_MONTHS = {
+  en: ['January','February','March','April','May','June','July','August','September','October','November','December'],
+  nl: ['Januari','Februari','Maart','April','Mei','Juni','Juli','Augustus','September','Oktober','November','December'],
+};
+
+const T = {
+  en: {
+    title: 'Fargny Calendar', mon:'Mon',tue:'Tue',wed:'Wed',thu:'Thu',fri:'Fri',sat:'Sat',sun:'Sun',
+    close:'Close', branch:'Branch', phase:'Phase', remark:'Remark', participants:'participants',
+    openToShare:'Open to share', clanName:'Clan',priorityName:'Priority',regularName:'Regular',boardName:'Board',
+    loading:'Loading calendar...', error:'Could not load calendar data.',
+  },
+  nl: {
+    title: 'Fargny Kalender', mon:'Ma',tue:'Di',wed:'Wo',thu:'Do',fri:'Vr',sat:'Za',sun:'Zo',
+    close:'Sluiten', branch:'Stam', phase:'Fase', remark:'Opmerking', participants:'deelnemers',
+    openToShare:'Open om te delen', clanName:'Stam',priorityName:'Prioriteit',regularName:'Regulier',boardName:'Bestuur',
+    loading:'Kalender laden...', error:'Kon kalendergegevens niet laden.',
+  },
+};
+
+function toISO(date) {
+  return date.getFullYear()+'-'+String(date.getMonth()+1).padStart(2,'0')+'-'+String(date.getDate()).padStart(2,'0');
+}
+function parseISO(s) { const p=s.split('-'); return new Date(+p[0],+p[1]-1,+p[2]); }
+function generateWeeks(year) {
+  const weeks=[]; let d=new Date(year,0,1);
+  while(d.getDay()!==6) d.setDate(d.getDate()+1);
+  let weekNum=1;
+  while(d.getFullYear()<=year){
+    const start=new Date(d), end=new Date(d); end.setDate(end.getDate()+6);
+    if(start.getFullYear()!==year) break;
+    weeks.push({id:year+'-W'+String(weekNum).padStart(2,'0'),weekNum,start:toISO(start),end:toISO(end),month:start.getMonth()});
+    d.setDate(d.getDate()+7); weekNum++;
+  }
+  return weeks;
+}
+function formatDate(iso,lang){if(!iso)return'';const p=iso.split('-');return parseInt(p[2])+' '+MONTHS_SHORT[lang][parseInt(p[1])-1];}
+function shortName(fullName){if(!fullName)return'?';const parts=fullName.split(' ');return parts.length>1?parts[0]+' '+parts[parts.length-1][0]+'.':parts[0];}
+function getPhaseName(p,t){return{clan:t.clanName,priority:t.priorityName,regular:t.regularName,board:t.boardName}[p]||p;}
+
+function PublicCalendar() {
+  const [lang, setLang] = React.useState(()=>navigator.language.startsWith('nl')?'nl':'en');
+  const t = T[lang];
+  const now = new Date();
+  const [calMonth, setCalMonth] = React.useState(now.getMonth());
+  const [calYear, setCalYear] = React.useState(now.getFullYear());
+  const [bookings, setBookings] = React.useState([]);
+  const [boardEvents, setBoardEvents] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState(null);
+  const [popup, setPopup] = React.useState(null);
+  const today = toISO(now);
+
+  // Fetch data whenever calYear changes
+  React.useEffect(()=>{
+    setLoading(true); setError(null);
+    fetch(`${API_BASE}/bookings/public-calendar?year=${calYear}`)
+      .then(r=>r.json())
+      .then(data=>{
+        if(data.success){
+          setBookings(data.data.bookings||[]);
+          setBoardEvents(data.data.board_events||[]);
+        } else { setError(data.error||t.error); }
+        setLoading(false);
+      })
+      .catch(()=>{ setError(t.error); setLoading(false); });
+  },[calYear]);
+
+  const goNext = ()=>{if(calMonth===11){setCalMonth(0);setCalYear(y=>y+1);}else setCalMonth(m=>m+1);};
+  const goPrev = ()=>{if(calMonth===0){setCalMonth(11);setCalYear(y=>y-1);}else setCalMonth(m=>m-1);};
+
+  const daysInMonth = new Date(calYear,calMonth+1,0).getDate();
+  const startDow = (new Date(calYear,calMonth,1).getDay()+6)%7;
+  const cells = [];
+  for(let i=0;i<startDow;i++) cells.push(null);
+  for(let d=1;d<=daysInMonth;d++) cells.push(d);
+  while(cells.length%7!==0) cells.push(null);
+
+  const weeks = generateWeeks(calYear);
+  const allItems = bookings.map(b=>{const w=weeks.find(wk=>wk.id===b.week_id);return{type:'booking',data:b,start:b.check_in_date||(w?w.start:''),end:b.check_out_date||(w?w.end:'')};});
+  (boardEvents||[]).forEach(ev=>{allItems.push({type:'board',data:ev,start:ev.start_date,end:ev.end_date});});
+
+  const dayBookings = {};
+  for(let dd=1;dd<=daysInMonth;dd++){
+    const ds = calYear+'-'+String(calMonth+1).padStart(2,'0')+'-'+String(dd).padStart(2,'0');
+    dayBookings[dd] = allItems.filter(item=>ds>=item.start&&ds<=item.end);
+  }
+  const rows = [];for(let ri=0;ri<cells.length;ri+=7) rows.push(cells.slice(ri,ri+7));
+  const dayNames = [t.mon,t.tue,t.wed,t.thu,t.fri,t.sat,t.sun];
+  const navBtnStyle = {padding:'8px 16px',border:'1.5px solid '+COLORS.border,borderRadius:8,background:COLORS.white,cursor:'pointer',fontSize:16,color:COLORS.text,fontFamily:"'DM Sans',sans-serif"};
+
+  return (
+    <div style={{minHeight:'100vh',background:COLORS.bg}}>
+      {/* Header */}
+      <div style={{background:COLORS.white,borderBottom:'1px solid '+COLORS.border,padding:'16px 24px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+        <div style={{display:'flex',alignItems:'center',gap:12}}>
+          <span style={{fontSize:28}}>&#127968;</span>
+          <div>
+            <h1 style={{fontSize:20,fontWeight:700,color:COLORS.text,fontFamily:"'Playfair Display',Georgia,serif",margin:0}}>{t.title}</h1>
+          </div>
+        </div>
+        <button onClick={()=>setLang(l=>l==='en'?'nl':'en')} style={{padding:'6px 14px',border:'1.5px solid '+COLORS.border,borderRadius:8,background:COLORS.white,cursor:'pointer',fontSize:13,fontWeight:600,color:COLORS.text,fontFamily:"'DM Sans',sans-serif"}}>
+          {lang==='en'?'NL':'EN'}
+        </button>
+      </div>
+
+      {/* Calendar */}
+      <div style={{maxWidth:960,margin:'0 auto',padding:'24px 20px'}}>
+        {/* Month/Year navigation */}
+        <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:16,marginBottom:20}}>
+          <button onClick={goPrev} style={navBtnStyle}>{'\u25C0'}</button>
+          <h2 style={{fontSize:20,fontWeight:700,color:COLORS.text,fontFamily:"'Playfair Display',Georgia,serif",margin:0,minWidth:220,textAlign:'center'}}>{FULL_MONTHS[lang][calMonth]} {calYear}</h2>
+          <button onClick={goNext} style={navBtnStyle}>{'\u25B6'}</button>
+        </div>
+
+        {loading ? (
+          <div style={{padding:60,textAlign:'center',color:COLORS.muted,fontSize:14}}>{t.loading}</div>
+        ) : error ? (
+          <div style={{padding:60,textAlign:'center',color:COLORS.accent,fontSize:14}}>{error}</div>
+        ) : (
+          <div style={{background:COLORS.white,borderRadius:14,padding:20,boxShadow:'0 1px 8px rgba(0,0,0,0.04)'}}>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:2,marginBottom:4}}>
+              {dayNames.map(name=><div key={name} style={{textAlign:'center',fontSize:11,fontWeight:700,color:COLORS.muted,padding:'8px 0',textTransform:'uppercase',letterSpacing:'0.5px'}}>{name}</div>)}
+            </div>
+            {rows.map((row,rowIdx)=>
+              <div key={rowIdx} style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:2}}>
+                {row.map((day,ci)=>{
+                  if(!day) return <div key={'e'+ci} style={{minHeight:64}}/>;
+                  const bks = dayBookings[day]||[];
+                  const isToday = (calYear+'-'+String(calMonth+1).padStart(2,'0')+'-'+String(day).padStart(2,'0'))===today;
+                  return <div key={day} style={{minHeight:64,padding:'3px 2px',position:'relative',border:isToday?'2px solid '+COLORS.accent:'2px solid transparent',borderRadius:6}}>
+                    <div style={{fontSize:12,fontWeight:isToday?700:400,color:COLORS.text,textAlign:'center',marginBottom:2}}>{day}</div>
+                    {bks.slice(0,3).map((item,bi)=>{
+                      const isBoard = item.type==='board';
+                      const b = item.data;
+                      let barColor, label, isPending=false;
+                      if(isBoard){barColor=COLORS.board;label=b.name;}
+                      else{const br=FAMILY_BRANCHES.find(x=>x.id===b.branch_id);isPending=b.cancellation_status==='pending';barColor=b.open_to_share?COLORS.openToShare:isPending?(br?br.color:'#ccc')+'40':(br?br.color:'#ccc');label=shortName(b.user_name)+(b.open_to_share?' \u{1F91D}':'');}
+                      const prevDay=ci>0?row[ci-1]:null;const nextDay=ci<6?row[ci+1]:null;
+                      const itemId=isBoard?'board_'+b.id:b.id;
+                      const prevHas=prevDay&&(dayBookings[prevDay]||[]).some(x=>(x.type==='board'?'board_'+x.data.id:x.data.id)===itemId);
+                      const nextHas=nextDay&&(dayBookings[nextDay]||[]).some(x=>(x.type==='board'?'board_'+x.data.id:x.data.id)===itemId);
+                      const radius=(!prevHas?'4px ':'0 ')+(!nextHas?'4px ':'0 ')+(!nextHas?'4px ':'0 ')+(!prevHas?'4px':'0');
+                      return <div key={itemId+'_'+bi} onClick={e=>{e.stopPropagation();setPopup(item);}} style={{height:16,marginBottom:1,background:barColor+'CC',borderRadius:radius,cursor:'pointer',display:'flex',alignItems:'center',overflow:'hidden',paddingLeft:!prevHas?3:0}}>
+                        {!prevHas && <span style={{fontSize:8,fontWeight:700,color:'white',whiteSpace:'nowrap',textOverflow:'ellipsis',overflow:'hidden',textDecoration:isPending?'line-through':'none'}}>{label}</span>}
+                      </div>;
+                    })}
+                  </div>;
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Legend */}
+        <div style={{display:'flex',flexWrap:'wrap',gap:16,justifyContent:'center',marginTop:16,fontSize:12,color:COLORS.muted}}>
+          {FAMILY_BRANCHES.map(br=>
+            <div key={br.id} style={{display:'flex',alignItems:'center',gap:4}}>
+              <div style={{width:10,height:10,borderRadius:3,background:br.color}}/>
+              <span>{br.name}</span>
+            </div>
+          )}
+          <div style={{display:'flex',alignItems:'center',gap:4}}>
+            <div style={{width:10,height:10,borderRadius:3,background:COLORS.board}}/>
+            <span>{t.boardName}</span>
+          </div>
+          <div style={{display:'flex',alignItems:'center',gap:4}}>
+            <div style={{width:10,height:10,borderRadius:3,background:COLORS.openToShare}}/>
+            <span>{t.openToShare}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Popup */}
+      {popup && <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.2)',zIndex:300,display:'flex',alignItems:'center',justifyContent:'center'}} onClick={()=>setPopup(null)}>
+        <div onClick={e=>e.stopPropagation()} style={{background:COLORS.white,borderRadius:14,padding:24,minWidth:280,maxWidth:400,boxShadow:'0 8px 32px rgba(0,0,0,0.15)'}}>
+          {popup.type==='board' ? <>
+            <h4 style={{fontSize:16,fontWeight:700,color:COLORS.board,margin:'0 0 8px 0'}}>{'\u{1F451}'} {popup.data.name}</h4>
+            <div style={{fontSize:13,color:COLORS.text}}>{formatDate(popup.data.start_date,lang)} &ndash; {formatDate(popup.data.end_date,lang)}</div>
+            {popup.data.description && <div style={{fontSize:13,color:COLORS.muted,marginTop:6,fontStyle:'italic'}}>{popup.data.description}</div>}
+            <div style={{fontSize:12,color:COLORS.board,marginTop:8}}>{popup.data.signup_count||0} {t.participants}</div>
+          </> : <>
+            <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:12}}>
+              <div style={{width:12,height:12,borderRadius:3,background:popup.data.open_to_share?COLORS.openToShare:(FAMILY_BRANCHES.find(x=>x.id===popup.data.branch_id)||{color:'#ccc'}).color}}/>
+              <h4 style={{fontSize:16,fontWeight:700,color:COLORS.text,margin:0}}>{popup.data.user_name}</h4>
+            </div>
+            <div style={{display:'flex',flexDirection:'column',gap:6,fontSize:13,color:COLORS.text}}>
+              <div><strong>{t.branch}: </strong>{popup.data.branch_name}</div>
+              <div><strong>{t.phase}: </strong>{getPhaseName(popup.data.phase,t)}</div>
+              {popup.data.remarks && <div style={{fontStyle:'italic',color:COLORS.muted}}><strong>{t.remark}: </strong>{popup.data.remarks}</div>}
+              {popup.data.open_to_share && <div style={{color:COLORS.openToShare,fontWeight:600}}>{'\u{1F91D}'} {t.openToShare}</div>}
+            </div>
+          </>}
+          <button onClick={()=>setPopup(null)} style={{marginTop:16,width:'100%',padding:'10px 0',background:COLORS.bg,border:'none',borderRadius:10,fontSize:14,fontWeight:500,color:'#5A4D40',cursor:'pointer',fontFamily:"'DM Sans',sans-serif"}}>{t.close}</button>
+        </div>
+      </div>}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('public-calendar-root')).render(<PublicCalendar/>);
+</script>
+</body>
+</html>
