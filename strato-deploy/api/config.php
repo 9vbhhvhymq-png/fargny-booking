@@ -97,7 +97,7 @@ function get_bearer_token(): ?string {
     return null;
 }
 
-function get_current_user(): ?array {
+function get_auth_user(): ?array {
     $token = get_bearer_token();
     if (!$token) return null;
 
@@ -115,7 +115,7 @@ function get_current_user(): ?array {
 }
 
 function require_auth(): array {
-    $user = get_current_user();
+    $user = get_auth_user();
     if (!$user) {
         json_error('Authentication required', 401);
     }

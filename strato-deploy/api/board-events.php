@@ -20,7 +20,7 @@ function handle_board_events(string $action, string $id, string $method) {
 
 function board_events_list() {
     $db = get_db();
-    $user = get_current_user(); // May be null for public access
+    $user = get_auth_user(); // May be null for public access
 
     $events = $db->query("
         SELECT be.*,

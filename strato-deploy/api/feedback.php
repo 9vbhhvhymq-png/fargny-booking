@@ -24,7 +24,7 @@ function handle_feedback(string $action, string $method) {
 }
 
 function feedback_submit() {
-    $user = get_current_user(); // Optional auth
+    $user = get_auth_user(); // Optional auth
     $body = get_json_body();
     $responses = $body['responses'] ?? null;
 
