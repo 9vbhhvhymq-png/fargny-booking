@@ -56,6 +56,6 @@ jobs:
                  --exclude-glob .git* \
                  --exclude-glob .env \
                  --exclude-glob node_modules/ \
-                 ./strato-deploy/ /booking/
+                 ./strato-deploy/ /STRATO-apps/wordpress_01/app/booking/
           bye
           EOF
