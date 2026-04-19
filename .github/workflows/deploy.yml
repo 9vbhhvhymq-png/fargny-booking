@@ -36,13 +36,15 @@ jobs:
         env:
           SFTP_HOST: ${{ secrets.FTP_HOST }}
           SFTP_USER: ${{ secrets.FTP_USER }}
-          SFTP_PASS: ${{ secrets.FTP_PASSWORD }}
+          # lftp reads the password from this env var when --env-password is set.
+          # This avoids any shell escaping issues with special characters.
+          LFTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
         run: |
-          # Strip any accidental whitespace/newlines from secrets
-          HOST="$(echo -n "$SFTP_HOST" | tr -d '[:space:]')"
-          USER_="$(echo -n "$SFTP_USER" | tr -d '[:space:]')"
+          # Strip any accidental whitespace/newlines from host + user
+          HOST="$(printf '%s' "$SFTP_HOST" | tr -d '[:space:]')"
+          USER_="$(printf '%s' "$SFTP_USER" | tr -d '[:space:]')"
 
-          lftp -u "$USER_","$SFTP_PASS" "sftp://$HOST" <<EOF
+          lftp --env-password -u "$USER_" "sftp://$HOST" <<EOF
           set sftp:auto-confirm yes
           set net:timeout 20
           set net:max-retries 2
