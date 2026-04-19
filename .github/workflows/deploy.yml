@@ -9,7 +9,7 @@ name: Deploy to Strato
 #   FTP_PASSWORD — your Strato SFTP password
 #
 # The contents of strato-deploy/ are uploaded to the /booking/ directory
-# on the server. Uses rsync over SSH for fast incremental uploads.
+# on the server using lftp (pure SFTP — no remote rsync needed).
 
 on:
   push:
@@ -29,23 +29,30 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install sshpass
-        run: sudo apt-get update && sudo apt-get install -y sshpass rsync
+      - name: Install lftp
+        run: sudo apt-get update && sudo apt-get install -y lftp
 
-      - name: Prepare known_hosts
-        run: |
-          mkdir -p ~/.ssh
-          ssh-keyscan -H "${{ secrets.FTP_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null || true
-          chmod 644 ~/.ssh/known_hosts
-
-      - name: Upload via rsync/SSH
+      - name: Upload via lftp (SFTP)
         env:
-          SSHPASS: ${{ secrets.FTP_PASSWORD }}
+          SFTP_HOST: ${{ secrets.FTP_HOST }}
+          SFTP_USER: ${{ secrets.FTP_USER }}
+          SFTP_PASS: ${{ secrets.FTP_PASSWORD }}
         run: |
-          sshpass -e rsync -avz \
-            --exclude='.git*' \
-            --exclude='node_modules' \
-            --exclude='.env' \
-            -e "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" \
-            ./strato-deploy/ \
-            "${{ secrets.FTP_USER }}@${{ secrets.FTP_HOST }}:/booking/"
+          # Strip any accidental whitespace/newlines from secrets
+          HOST="$(echo -n "$SFTP_HOST" | tr -d '[:space:]')"
+          USER_="$(echo -n "$SFTP_USER" | tr -d '[:space:]')"
+
+          lftp -u "$USER_","$SFTP_PASS" "sftp://$HOST" <<EOF
+          set sftp:auto-confirm yes
+          set net:timeout 20
+          set net:max-retries 2
+          set net:reconnect-interval-base 5
+          mirror --reverse \
+                 --verbose \
+                 --delete \
+                 --exclude-glob .git* \
+                 --exclude-glob .env \
+                 --exclude-glob node_modules/ \
+                 ./strato-deploy/ /booking/
+          bye
+          EOF
