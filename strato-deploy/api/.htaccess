@@ -1,3 +1,16 @@
 RewriteEngine On
+
+# Preserve the Authorization header through mod_rewrite.
+# On Strato (and other shared Apache setups) the Authorization header
+# is stripped before PHP sees it unless we forward it explicitly.
+RewriteCond %{HTTP:Authorization} ^(.+)$
+RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+# Front-controller: route everything that isn't a real file to index.php
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteRule ^(.*)$ index.php [QSA,L]
+
+# Also expose the header via CGI env for PHP-FPM setups
+<IfModule mod_setenvif.c>
+  SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=$1
+</IfModule>

@@ -90,9 +90,26 @@ function get_json_body(): array {
 
 // ---- Auth helpers ----
 function get_bearer_token(): ?string {
-    $header = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '';
-    if (preg_match('/^Bearer\s+(.+)$/i', $header, $m)) {
-        return $m[1];
+    // Try every location Apache/PHP might stash the Authorization header.
+    // Strato strips HTTP_AUTHORIZATION on some request types; fall back to
+    // REDIRECT_HTTP_AUTHORIZATION (set by mod_rewrite) and getallheaders().
+    $candidates = [
+        $_SERVER['HTTP_AUTHORIZATION']          ?? '',
+        $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '',
+        $_SERVER['Authorization']               ?? '',
+    ];
+    if (function_exists('getallheaders')) {
+        $headers = getallheaders();
+        foreach ($headers as $name => $value) {
+            if (strcasecmp($name, 'Authorization') === 0) {
+                $candidates[] = $value;
+            }
+        }
+    }
+    foreach ($candidates as $header) {
+        if ($header && preg_match('/^Bearer\s+(.+)$/i', $header, $m)) {
+            return $m[1];
+        }
     }
     return null;
 }
