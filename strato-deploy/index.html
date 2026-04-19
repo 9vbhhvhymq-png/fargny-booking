@@ -24,7 +24,10 @@
 // ═══════════════════════════════════════════════════════
 // API CLIENT
 // ═══════════════════════════════════════════════════════
-const API_BASE = window.location.origin + '/api';
+// Resolve API path relative to where this page is served from,
+// so it works at /booking/api/ or any other sub-path.
+const _pageBase = new URL('.', window.location.href).href.replace(/\/$/, '');
+const API_BASE = _pageBase + '/api';
 
 async function api(path, options = {}) {
   const token = localStorage.getItem('fargny_token');

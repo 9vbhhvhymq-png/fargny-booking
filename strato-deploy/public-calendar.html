@@ -20,7 +20,10 @@
 <div id="public-calendar-root"></div>
 <script type="text/babel">
 
-const API_BASE = window.location.origin + '/api';
+// Resolve API path relative to where this page is served from,
+// so it works at /booking/api/ or any other sub-path.
+const _pageBase = new URL('.', window.location.href).href.replace(/\/$/, '');
+const API_BASE = _pageBase + '/api';
 const COLORS = {
   bg: '#F5F0EB', text: '#2C1810', muted: '#8B7D6B', border: '#E0D8CF',
   white: '#FFFFFF', accent: '#B85042', success: '#4A7C59', warning: '#C4853B',

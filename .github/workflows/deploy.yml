@@ -1,0 +1,44 @@
+name: Deploy to Strato
+
+# Deploys strato-deploy/ to Strato shared hosting via FTP
+# whenever changes are pushed to main.
+#
+# Required GitHub Secrets:
+#   FTP_HOST     — e.g. 512020809.ssh.w1.strato.hosting
+#   FTP_USER     — e.g. STU834724242
+#   FTP_PASSWORD — your Strato FTP password
+#
+# The contents of strato-deploy/ are uploaded to the /booking/ directory
+# on the server (adjust server-dir below if your path differs).
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'strato-deploy/**'
+
+jobs:
+  deploy:
+    name: FTP Deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Deploy via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_HOST }}
+          username: ${{ secrets.FTP_USER }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          local-dir: ./strato-deploy/
+          server-dir: /booking/
+          # Skip git internals, env secrets, and node_modules
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/.env
+            **/node_modules/**
+            **/node_modules
