@@ -1,15 +1,15 @@
 name: Deploy to Strato
 
-# Deploys strato-deploy/ to Strato shared hosting via FTP
+# Deploys strato-deploy/ to Strato shared hosting via SFTP
 # whenever changes are pushed to main.
 #
 # Required GitHub Secrets:
 #   FTP_HOST     — e.g. 512020809.ssh.w1.strato.hosting
 #   FTP_USER     — e.g. STU834724242
-#   FTP_PASSWORD — your Strato FTP password
+#   FTP_PASSWORD — your Strato SFTP password
 #
 # The contents of strato-deploy/ are uploaded to the /booking/ directory
-# on the server (adjust server-dir below if your path differs).
+# on the server. Uses rsync over SSH for fast incremental uploads.
 
 on:
   push:
@@ -17,28 +17,35 @@ on:
       - main
     paths:
       - 'strato-deploy/**'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:
 
 jobs:
   deploy:
-    name: FTP Deploy
+    name: SFTP Deploy
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Deploy via FTP
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-        with:
-          server: ${{ secrets.FTP_HOST }}
-          username: ${{ secrets.FTP_USER }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          local-dir: ./strato-deploy/
-          server-dir: /booking/
-          # Skip git internals, env secrets, and node_modules
-          exclude: |
-            **/.git*
-            **/.git*/**
-            **/.env
-            **/node_modules/**
-            **/node_modules
+      - name: Install sshpass
+        run: sudo apt-get update && sudo apt-get install -y sshpass rsync
+
+      - name: Prepare known_hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H "${{ secrets.FTP_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null || true
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: Upload via rsync/SSH
+        env:
+          SSHPASS: ${{ secrets.FTP_PASSWORD }}
+        run: |
+          sshpass -e rsync -avz \
+            --exclude='.git*' \
+            --exclude='node_modules' \
+            --exclude='.env' \
+            -e "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" \
+            ./strato-deploy/ \
+            "${{ secrets.FTP_USER }}@${{ secrets.FTP_HOST }}:/booking/"
