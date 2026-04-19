@@ -984,25 +984,27 @@ function App(){
   React.useEffect(()=>{
     if(!user) return;
     const load = async ()=>{
+      // Load each independently so one failure doesn't wipe out the others.
+      // Also ALWAYS set weeks — fall back to client-side generation if API fails.
+      setWeeks(generateWeeks(year));
       try {
-        const [bkData, pcData, beData, brData] = await Promise.all([
-          api(`bookings?year=${year}`),
-          api(`phase-config?year=${year}`),
-          api('board-events'),
-          api('branches'),
-        ]);
+        const bkData = await api(`bookings?year=${year}`);
+        console.log('[Fargny] bookings response:', bkData);
         setBookings(bkData.bookings||[]);
         setMyBookings(bkData.my_bookings||[]);
-        setWeeks(bkData.weeks||generateWeeks(year));
-        setPhaseConfig(pcData);
-        setBoardEvents(beData||[]);
+        if(Array.isArray(bkData.weeks) && bkData.weeks.length>0) setWeeks(bkData.weeks);
+      } catch(e){console.error('[Fargny] bookings load failed',e);}
+      try { const pcData = await api(`phase-config?year=${year}`); setPhaseConfig(pcData); }
+      catch(e){console.error('[Fargny] phase-config load failed',e);}
+      try { const beData = await api('board-events'); setBoardEvents(beData||[]); }
+      catch(e){console.error('[Fargny] board-events load failed',e);}
+      try {
+        const brData = await api('branches');
         setBranchData(brData||[]);
-        setRegisteredUsers([]);
-        // Extract registered users from branch data
         const users = [];
         (brData||[]).forEach(br=>(br.members||[]).forEach(m=>{m.branch_id=br.id;users.push(m);}));
         setRegisteredUsers(users);
-      } catch(e){console.error('Load error',e);}
+      } catch(e){console.error('[Fargny] branches load failed',e);}
     };
     load();
   },[user,year]);
