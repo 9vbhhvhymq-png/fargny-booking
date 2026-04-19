@@ -10,6 +10,7 @@ name: Deploy to Strato
 #
 # The contents of strato-deploy/ are uploaded to the /booking/ directory
 # on the server using lftp (pure SFTP — no remote rsync needed).
+# (trigger: re-run after password reset)
 
 on:
   push:
