@@ -19,7 +19,10 @@ function gcal_cache_path(): string {
 
 function gcal_fetch() {
     $year = isset($_GET['year']) ? (int)$_GET['year'] : 0;
-    $url  = env('GOOGLE_CALENDAR_URL', '');
+    // Fall back to the known Fargny public feed if the .env value is missing.
+    // This is a public iCal URL — not a secret — so baking it in is safe.
+    $url  = env('GOOGLE_CALENDAR_URL',
+        'https://calendar.google.com/calendar/ical/fargnyonline%40gmail.com/public/basic.ics');
     if (!$url) {
         json_success(['events' => [], 'source' => 'gcal', 'cached' => false, 'error' => 'GOOGLE_CALENDAR_URL not configured']);
         return;
