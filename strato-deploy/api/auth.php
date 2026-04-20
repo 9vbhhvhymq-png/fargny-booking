@@ -143,6 +143,20 @@ function auth_logout() {
 
 function auth_me() {
     $user = require_auth();
+
+    // Self-heal: if this user is linked to a shareholder whose branch_id
+    // differs from fargny_users.branch_id, sync it. This fixes historical
+    // accounts that were created against the old dummy seed.
+    $db = get_db();
+    $stmt = $db->prepare("SELECT branch_id FROM fargny_shareholders WHERE user_id = ? LIMIT 1");
+    $stmt->execute([$user['id']]);
+    $sh = $stmt->fetch();
+    if ($sh && (int)$sh['branch_id'] !== (int)$user['branch_id'] && !$user['is_admin']) {
+        $db->prepare("UPDATE fargny_users SET branch_id = ? WHERE id = ?")
+           ->execute([(int)$sh['branch_id'], (int)$user['id']]);
+        $user['branch_id'] = (int)$sh['branch_id'];
+    }
+
     json_success([
         'user' => [
             'id'           => (int)$user['id'],

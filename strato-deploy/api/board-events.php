@@ -76,7 +76,9 @@ function board_events_list() {
 }
 
 function board_events_create() {
-    $admin = require_admin();
+    // Special events: any logged-in user can create one. The creator is
+    // automatically signed up as the first participant.
+    $user = require_auth();
     $body = get_json_body();
 
     $name  = trim($body['name'] ?? '');
@@ -88,9 +90,16 @@ function board_events_create() {
 
     $db = get_db();
     $db->prepare("INSERT INTO fargny_board_events (name, start_date, end_date, description, created_by) VALUES (?, ?, ?, ?, ?)")
-       ->execute([$name, $start, $end, $desc, $admin['id']]);
+       ->execute([$name, $start, $end, $desc, $user['id']]);
+    $eventId = (int)$db->lastInsertId();
 
-    json_success(['id' => (int)$db->lastInsertId()], 201);
+    // Auto-signup the creator as the first participant
+    try {
+        $db->prepare("INSERT INTO fargny_board_signups (event_id, user_id) VALUES (?, ?)")
+           ->execute([$eventId, $user['id']]);
+    } catch (Exception $e) { /* ignore dup */ }
+
+    json_success(['id' => $eventId], 201);
 }
 
 function board_events_signup(int $eventId) {
