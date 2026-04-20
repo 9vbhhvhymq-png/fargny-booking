@@ -34,7 +34,7 @@ function branches_list() {
     foreach ($members as $m) $memberMap[(int)$m['branch_id']] = (int)$m['member_count'];
 
     // Get registered users grouped by branch
-    $users = $db->query("SELECT id, display_name, email, branch_id FROM fargny_users ORDER BY display_name")->fetchAll();
+    $users = $db->query("SELECT id, display_name, email, branch_id, is_admin FROM fargny_users ORDER BY display_name")->fetchAll();
     $usersByBranch = [];
     foreach ($users as $u) {
         $bid = (int)$u['branch_id'];
@@ -43,6 +43,7 @@ function branches_list() {
             'id'           => (int)$u['id'],
             'display_name' => $u['display_name'],
             'email'        => $u['email'],
+            'is_admin'     => (bool)$u['is_admin'],
         ];
     }
 

@@ -45,6 +45,7 @@ function format_booking(array $b): array {
         'cancellation_status' => $b['cancellation_status'],
         'booked_at'           => $b['booked_at'],
         'payment_status'      => $b['payment_status'] ?? 'not_paid',
+        'include_cleaning'    => (isset($b['cleaning_fee']) && $b['cleaning_fee'] !== null) ? ((float)$b['cleaning_fee'] > 0) : true,
     ];
 }
 
@@ -55,7 +56,8 @@ function bookings_list() {
 
     $stmt = $db->prepare("
         SELECT b.*, u.display_name, u.email, br.name AS branch_name,
-               COALESCE(p.status, 'not_paid') AS payment_status
+               COALESCE(p.status, 'not_paid') AS payment_status,
+               p.cleaning_fee AS cleaning_fee
         FROM fargny_bookings b
         JOIN fargny_users u ON u.id = b.user_id
         JOIN fargny_branches br ON br.id = b.branch_id
@@ -69,7 +71,8 @@ function bookings_list() {
     // Also get ALL bookings for current user (across years) for My Bookings sidebar
     $stmtMy = $db->prepare("
         SELECT b.*, u.display_name, u.email, br.name AS branch_name,
-               COALESCE(p.status, 'not_paid') AS payment_status
+               COALESCE(p.status, 'not_paid') AS payment_status,
+               p.cleaning_fee AS cleaning_fee
         FROM fargny_bookings b
         JOIN fargny_users u ON u.id = b.user_id
         JOIN fargny_branches br ON br.id = b.branch_id
@@ -172,6 +175,28 @@ function bookings_create() {
             if ($nights > 7) json_error('Maximum 7 nights for regular bookings');
             if ($nights < 1) json_error('Check-out must be after check-in');
         }
+
+        // Reject if the week is already occupied by another Fargny booking
+        $stmt = $db->prepare("SELECT id FROM fargny_bookings WHERE week_id = ? AND cancellation_status NOT IN ('approved') LIMIT 1");
+        $stmt->execute([$weekId]);
+        if ($stmt->fetch()) json_error('This week is already booked');
+
+        // Reject if the week overlaps with any Google Calendar event
+        if ($week) {
+            require_once __DIR__ . '/google-calendar.php';
+            $gcalEvents = @gcal_get_events();
+            if (is_array($gcalEvents)) {
+                $ws = $week['start']; $we = $week['end'];
+                foreach ($gcalEvents as $ev) {
+                    $es = $ev['start_date'] ?? ''; $ee = $ev['end_date'] ?? $es;
+                    if (!$es) continue;
+                    // overlap: es <= we && ee >= ws
+                    if ($es <= $we && $ee >= $ws) {
+                        json_error('This week is blocked by the legacy calendar');
+                    }
+                }
+            }
+        }
     }
 
     // No double booking: same week, same user
@@ -266,7 +291,8 @@ function bookings_calendar() {
 
     $stmt = $db->prepare("
         SELECT b.*, u.display_name, u.email, br.name AS branch_name,
-               COALESCE(p.status, 'not_paid') AS payment_status
+               COALESCE(p.status, 'not_paid') AS payment_status,
+               p.cleaning_fee AS cleaning_fee
         FROM fargny_bookings b
         JOIN fargny_users u ON u.id = b.user_id
         JOIN fargny_branches br ON br.id = b.branch_id

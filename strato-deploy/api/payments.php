@@ -84,12 +84,14 @@ function payments_save(int $bookingId) {
     }
 
     $guestData = $body['guest_data'] ?? null;
+    // include_cleaning: default true if not provided
+    $includeCleaning = array_key_exists('include_cleaning', $body) ? (bool)$body['include_cleaning'] : true;
 
     // Calculate fees from guest data
     // guest_data is an array of nights, each night has: { child04: N, child59: N, adult: N }
     $houseFee = 0;
     $personFee = 0;
-    $cleaningFee = 70.0;
+    $cleaningFee = $includeCleaning ? 70.0 : 0.0;
 
     if (is_array($guestData)) {
         foreach ($guestData as $night) {

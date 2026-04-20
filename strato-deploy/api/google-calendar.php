@@ -13,6 +13,34 @@ function handle_google_calendar(string $action, string $method) {
     gcal_fetch();
 }
 
+// Internal helper: returns the parsed events array (from cache or live fetch)
+// without emitting any HTTP response. Safe to call from other endpoints.
+function gcal_get_events(): array {
+    $url = env('GOOGLE_CALENDAR_URL',
+        'https://calendar.google.com/calendar/ical/fargnyonline%40gmail.com/public/basic.ics');
+    if (!$url) return [];
+    $cachePath = gcal_cache_path();
+    $cacheTtl  = 15 * 60;
+    if (file_exists($cachePath) && (time() - filemtime($cachePath)) < $cacheTtl) {
+        $raw = @file_get_contents($cachePath);
+        $decoded = json_decode($raw, true);
+        if (is_array($decoded)) return $decoded;
+    }
+    $ics = gcal_http_get($url);
+    if ($ics === false) {
+        // Fall back to stale cache if any
+        if (file_exists($cachePath)) {
+            $raw = @file_get_contents($cachePath);
+            $decoded = json_decode($raw, true);
+            if (is_array($decoded)) return $decoded;
+        }
+        return [];
+    }
+    $events = gcal_parse_ics($ics);
+    @file_put_contents($cachePath, json_encode($events));
+    return $events;
+}
+
 function gcal_cache_path(): string {
     return sys_get_temp_dir() . '/fargny_gcal_cache.json';
 }

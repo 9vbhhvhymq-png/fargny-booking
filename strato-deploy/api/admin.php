@@ -197,7 +197,10 @@ function admin_approve_cancellation(string $idStr) {
     $booking = $stmt->fetch();
     if (!$booking) json_error('Booking not found', 404);
 
-    $db->prepare("UPDATE fargny_bookings SET cancellation_status = 'approved' WHERE id = ?")->execute([$id]);
+    // Actually delete the booking (and its payment record) so the week
+    // becomes free again and the user disappears from all lists.
+    $db->prepare("DELETE FROM fargny_payments WHERE booking_id = ?")->execute([$id]);
+    $db->prepare("DELETE FROM fargny_bookings WHERE id = ?")->execute([$id]);
 
     // Notify user
     try {

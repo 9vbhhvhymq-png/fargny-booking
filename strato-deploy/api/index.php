@@ -38,7 +38,7 @@ switch ($resource) {
 
     case 'users':
         require_once __DIR__ . '/users.php';
-        handle_users($action, $method);
+        handle_users($action, $id, $method);
         break;
 
     case 'admin':
