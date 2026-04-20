@@ -71,6 +71,11 @@ switch ($resource) {
         handle_stats($method);
         break;
 
+    case 'google-calendar':
+        require_once __DIR__ . '/google-calendar.php';
+        handle_google_calendar($action, $method);
+        break;
+
     case 'email':
         require_once __DIR__ . '/email.php';
         // Email is only called internally by other endpoints
@@ -82,6 +87,6 @@ switch ($resource) {
             'success' => true,
             'message' => 'Fargny Booking API',
             'version' => '1.0.0',
-            'endpoints' => ['auth', 'bookings', 'branches', 'users', 'admin', 'feedback', 'phase-config', 'board-events', 'payments', 'stats']
+            'endpoints' => ['auth', 'bookings', 'branches', 'users', 'admin', 'feedback', 'phase-config', 'board-events', 'payments', 'stats', 'google-calendar']
         ]);
 }
