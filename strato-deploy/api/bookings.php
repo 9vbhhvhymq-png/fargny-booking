@@ -192,7 +192,7 @@ function bookings_create() {
                     if (!$es) continue;
                     // overlap: es <= we && ee >= ws
                     if ($es <= $we && $ee >= $ws) {
-                        json_error('This week is blocked by the legacy calendar');
+                        json_error('This week is already booked via the existing calendar');
                     }
                 }
             }
