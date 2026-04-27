@@ -35,16 +35,34 @@ function send_booking_confirmation(array $user, array $booking) {
     $checkOut = $booking['check_out_date'] ?? '';
     $adminBooked = !empty($booking['admin_booked']) ? ' (booked by admin)' : '';
 
+    // Compute amount if guest counts present
+    $hasGuests = false;
+    $amountRow = '';
+    $costs = $booking['costs'] ?? null;
+    if (is_array($costs)) {
+        $adults = (int)($costs['adults'] ?? 0);
+        $c59    = (int)($costs['children_5_9'] ?? 0);
+        $c04    = (int)($costs['children_0_4'] ?? 0);
+        if ($adults + $c59 + $c04 > 0) {
+            $hasGuests = true;
+            $amount = isset($costs['total']) ? (float)$costs['total'] : 0.0;
+            $amountRow = '<tr><td style="padding:8px 12px;color:#8B7D6B;font-size:13px;">Amount</td><td style="padding:8px 12px;color:#2C1810;font-size:13px;font-weight:600;">&euro; ' . number_format($amount, 2, ',', '.') . '</td></tr>';
+        }
+    }
+    $paymentLine = $hasGuests
+        ? 'You will receive a payment request separately. Transfer the amount to penningmeester@fargny.org. In case of questions, send an email to penningmeester@fargny.org.'
+        : 'Payment details will follow once you fill in the guest information. In case of questions, send an email to penningmeester@fargny.org.';
+
     $content = '<p style="color:#2C1810;font-size:15px;">Dear ' . htmlspecialchars($user['display_name'] ?? $user['email']) . ',</p>
-    <p style="color:#2C1810;font-size:15px;">Your booking has been confirmed!</p>
+    <p style="color:#2C1810;font-size:15px;">Your booking has been confirmed.</p>
     <table style="width:100%;border-collapse:collapse;margin:16px 0;">
     <tr><td style="padding:8px 12px;color:#8B7D6B;font-size:13px;">Week</td><td style="padding:8px 12px;color:#2C1810;font-size:13px;font-weight:600;">' . htmlspecialchars($weekId) . '</td></tr>
     <tr><td style="padding:8px 12px;color:#8B7D6B;font-size:13px;">Phase</td><td style="padding:8px 12px;color:#2C1810;font-size:13px;font-weight:600;">' . htmlspecialchars($phase . $adminBooked) . '</td></tr>
     <tr><td style="padding:8px 12px;color:#8B7D6B;font-size:13px;">Check-in</td><td style="padding:8px 12px;color:#2C1810;font-size:13px;">' . htmlspecialchars($checkIn) . '</td></tr>
     <tr><td style="padding:8px 12px;color:#8B7D6B;font-size:13px;">Check-out</td><td style="padding:8px 12px;color:#2C1810;font-size:13px;">' . htmlspecialchars($checkOut) . '</td></tr>
+    ' . $amountRow . '
     </table>
-    <p style="color:#8B7D6B;font-size:13px;">You will receive a payment request separately. Transfer the amount to penningmeester@fargny.org.</p>
-    <p style="color:#8B7D6B;font-size:13px;">Questions? Contact Rogier: +31-6-57711402</p>';
+    <p style="color:#8B7D6B;font-size:13px;">' . $paymentLine . '</p>';
 
     send_email($email, "Booking Confirmed: $weekId", email_template('Booking Confirmation', $content));
 }

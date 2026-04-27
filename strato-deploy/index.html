@@ -16,6 +16,24 @@
   ::-webkit-scrollbar { width: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: #D4C5B5; border-radius: 3px; }
+  button, a, input[type=submit] { min-height: 36px; }
+  @media (max-width: 720px) {
+    /* Stack header content (title/lang/logout) and tab nav */
+    .fargny-header { flex-direction: column !important; align-items: stretch !important; gap: 10px !important; padding: 12px 14px !important; }
+    .fargny-header > * { width: 100% !important; }
+    .fargny-tabs { flex-wrap: wrap !important; gap: 6px !important; }
+    .fargny-tabs > button { flex: 1 1 auto !important; }
+    /* Sidebar above main, full width */
+    .fargny-booking-layout { flex-direction: column !important; gap: 16px !important; padding: 16px !important; }
+    .fargny-booking-layout > .fargny-sidebar { width: 100% !important; max-width: none !important; position: static !important; }
+    .fargny-booking-layout > .fargny-main { width: 100% !important; }
+    /* Calendar grid scroll horizontally */
+    .fargny-cal-wrap { overflow-x: auto !important; }
+    /* Modals: full-width on mobile */
+    .fargny-modal { width: 95vw !important; max-width: 480px !important; padding: 18px !important; }
+    /* Larger tap targets */
+    button, a.fargny-tap, input[type=submit] { min-height: 44px !important; }
+  }
 </style>
 </head>
 <body>
@@ -78,15 +96,15 @@ const CLEANING_FEE = 70;
 const T = {
   en: {
     appName:"Fargny",subtitle:"Holiday House Booking",signIn:"Sign In",register:"Register",email:"Email address",password:"Password",confirmPassword:"Confirm password",fillAll:"Please fill in all fields",invalidEmail:"Please enter a valid email",pickShareholder:"Select your name",createAccount:"Create Account",nameTaken:"This person has already registered",invalidLogin:"Invalid email or password",passwordMismatch:"Passwords do not match",signOut:"Sign Out",weeksBooked:"weeks booked",book:"Book",calendar:"Calendar",statistics:"Statistics",bookingPhase:"Booking Phase",year:"Year",myBookings:"My Bookings",noBookingsYet:"No bookings yet",familyBranches:"Family Branches",clickBranch:"Click a branch to see its members",all:"All",noWeeks:"No weeks available",bookBtn:"Book",cancelBtn:"Cancel",yourBooking:"Your booking",branchAlreadyBooked:"Your branch already booked a week",youAlreadyBooked:"You already booked a week",booked:"Booked",available:"Available",doubleBooking:"Double booking",noMembers:"No members registered yet",membersRegistered:"members registered",memberRegistered:"member registered",close:"Close",admin:"Admin",adminTitle:"Admin Panel",adminDesc:"Manage bookings, cancellations & payments",owner:"Owner",pickOwner:"Choose an owner...",phase:"Phase",week:"Week",pickWeek:"Choose a week...",clanName:"Clan Booking",clanDesc:"Each family branch picks one week",clanRule:"One week per family branch",priorityName:"Priority Booking",priorityDesc:"Each owner picks one week",priorityRule:"One week per owner",regularName:"Regular Booking",regularDesc:"Book as much as you like",regularRule:"Bookable up to 6 months ahead",hiddenCalNote:"Clan and Priority bookings are not yet revealed. Only your own and Regular bookings are shown.",adminBooking:"via admin",bookOnBehalf:"Book on behalf",loading:"Loading...",emailTab:"Paste Email",manualTab:"Manual",pasteEmail:"Paste the email here...",parseEmail:"Parse Email",parsing:"Reading email...",parsedResult:"Parsed from email",noMatch:"Could not match a registered owner",weekNotFound:"Could not identify the requested week",parseError:"Could not parse the email.",confirmBooking:"Confirm Booking",parsedName:"Detected name",parsedWeek:"Requested week",feedback:"Feedback",active:"Active",opens:"Opens",closed:"Closed",weekNotYetOpen:"Opens for booking on",weekBookedByOther:"Already booked",confirmationEmailSent:"A confirmation email will be sent to",requestCancel:"Request cancellation",pendingCancellation:"Cancellation pending",cancelRequested:"Cancellation requested",approveCancellation:"Approve",rejectCancellation:"Reject",pendingCancellations:"Pending Cancellations",cancellationsTab:"Cancellations",paymentsTab:"Payments",noPendingCancellations:"No pending cancellations",statsTitle:"Booking Statistics",bookingsPerUser:"Bookings per user",bookingsPerBranch:"Bookings per branch",overallOccupancy:"Overall occupancy",bookingTimeline:"Booking timeline",totalWeeks:"Total weeks",bookedWeeks:"Booked weeks",availableWeeks:"Available weeks",userName:"User",branchLabel:"Branch",total:"Total",lastLogin:"Last login",adminOnly:"Admin access required",noData:"No data available",mon:"Mon",tue:"Tue",wed:"Wed",thu:"Thu",fri:"Fri",sat:"Sat",sun:"Sun",
-    costs:"Costs",houseFee:"House fee",perNight:"per night",perPerson:"Per person",cleaningFee:"Cleaning fee",includeCleaning:"Include final cleaning (\u20AC70)",totalCost:"Total",notPaid:"Not paid",invoiceSent:"Invoice sent",paid:"Paid",child04:"Children 0\u20134 (free)",child59:"Children 5\u20139",adult:"10 years and older",nights:"nights",nightLabel:"Night",saveCosts:"Save",costSummary:"Cost summary",paymentStatus:"Payment status",paymentOverview:"Payment overview",amount:"Amount",filterUnpaid:"Show unpaid only",allPayments:"All",whatsappHelp:"Need help?",bankInstructions:"Transfer the amount to penningmeester@fargny.org \u2014 you will receive an invoice with payment request. Questions? Call Rogier: +31-6-57711402",
+    costs:"Costs",houseFee:"House fee",perNight:"per night",perPerson:"Per person",cleaningFee:"Cleaning fee",includeCleaning:"Include final cleaning (\u20AC70)",totalCost:"Total",notPaid:"Not paid",invoiceSent:"Invoice sent",paid:"Paid",child04:"Children 0\u20134 (free)",child59:"Children 5\u20139",adult:"10 years and older",nights:"nights",nightLabel:"Night",saveCosts:"Save",costSummary:"Cost summary",paymentStatus:"Payment status",paymentOverview:"Payment overview",amount:"Amount",filterUnpaid:"Show unpaid only",allPayments:"All",whatsappHelp:"Need help?",bankInstructions:"Transfer the amount to penningmeester@fargny.org \u2014 you will receive an invoice with payment request.",
     openToShare:"I am open to have other people join me",contactPerson:"Contact",addRemark:"Add a remark (optional)",remarkLabel:"Remark",whoJoining:"Who is joining you?",confirmBookQ:"Are you sure you want to book",yesBook:"Yes, book",checkIn:"Check-in",checkOut:"Check-out",maxNights:"Maximum 7 nights",customDates:"Custom dates",
-    boardBookings:"Special Events",boardDesc:"Create or join Fargny special events",boardRule:"Anyone can create or join",specialWeekends:"Special events",signUp:"Sign up",signedUp:"Signed up",cancelSignup:"Cancel signup",participants:"participants",boardEventsTab:"Special Events",createBoardEvent:"Create your special event",createdBy:"Created by",eventName:"Event name",eventDesc:"Description",eventStart:"Start date",eventEnd:"End date",noEvents:"No upcoming special events",boardTab:"Events",newEventBtn:"New event",viaOldCalendar:"Via old calendar",userManagement:"User Management",makeAdmin:"Make admin",removeAdmin:"Remove admin",adminTab:"Admin",downloadData:"Download CSV",loadingCalendar:"Checking existing calendar\u2026",bookedInGcal:"This week is already booked via the existing calendar",
+    boardBookings:"Special Events",boardDesc:"Create or join Fargny special events",boardRule:"Anyone can create or join",specialWeekends:"Special events",signUp:"Sign up",signedUp:"Signed up",cancelSignup:"Cancel signup",participants:"participants",boardEventsTab:"Special Events",createBoardEvent:"Create your special event",createdBy:"Created by",eventName:"Event name",eventDesc:"Description",eventStart:"Start date",eventEnd:"End date",noEvents:"No upcoming special events",boardTab:"Events",newEventBtn:"New event",viaOldCalendar:"Via old calendar",userManagement:"User Management",makeAdmin:"Make admin",removeAdmin:"Remove admin",adminTab:"Admin",downloadData:"Download CSV",loadingCalendar:"Checking existing calendar\u2026",bookedInGcal:"This week is already booked via the existing calendar",bookingConfirmed:"Your booking has been confirmed. You will receive a payment request separately. In case of questions, send an email to penningmeester@fargny.org",dropdownNote:"Don't see your name? You may already be registered. Try signing in.",forgotPassword:"Forgot password?",resetPasswordTitle:"Reset password",resetPasswordSent:"If that email is registered, a reset link has been sent.",contactToReset:"Please contact Moritz to reset your password",backToLogin:"Back to sign in",sendResetLink:"Send reset link",confirmDates:"You will book:",maxParticipants:"Maximum participants",maxParticipantsHint:"Leave blank for unlimited",eventFull:"Full",viewDetails:"View details",eventDetails:"Event details",
   },
   nl: {
     appName:"Fargny",subtitle:"Vakantiehuis Boekingssysteem",signIn:"Inloggen",register:"Registreren",email:"E-mailadres",password:"Wachtwoord",confirmPassword:"Wachtwoord bevestigen",fillAll:"Vul alle velden in",invalidEmail:"Voer een geldig e-mailadres in",pickShareholder:"Selecteer je naam",createAccount:"Account aanmaken",nameTaken:"Deze persoon is al geregistreerd",invalidLogin:"Ongeldig e-mailadres of wachtwoord",passwordMismatch:"Wachtwoorden komen niet overeen",signOut:"Uitloggen",weeksBooked:"weken geboekt",book:"Boeken",calendar:"Kalender",statistics:"Statistieken",bookingPhase:"Boekingsfase",year:"Jaar",myBookings:"Mijn Boekingen",noBookingsYet:"Nog geen boekingen",familyBranches:"Stammen",clickBranch:"Klik op een stam om de leden te zien",all:"Alle",noWeeks:"Geen weken beschikbaar",bookBtn:"Boeken",cancelBtn:"Annuleren",yourBooking:"Jouw boeking",branchAlreadyBooked:"Je stam heeft al een week geboekt",youAlreadyBooked:"Je hebt al een week geboekt",booked:"Geboekt",available:"Beschikbaar",doubleBooking:"Dubbele boeking",noMembers:"Nog geen leden geregistreerd",membersRegistered:"leden geregistreerd",memberRegistered:"lid geregistreerd",close:"Sluiten",admin:"Beheerder",adminTitle:"Beheerderspaneel",adminDesc:"Beheer boekingen, annuleringen & betalingen",owner:"Eigenaar",pickOwner:"Kies een eigenaar...",phase:"Fase",week:"Week",pickWeek:"Kies een week...",clanName:"Stamboeking",clanDesc:"Elke stam kiest een week",clanRule:"E\u00e9n week per stam",priorityName:"Prioriteitsboeking",priorityDesc:"Elke eigenaar kiest een week",priorityRule:"E\u00e9n week per eigenaar",regularName:"Reguliere Boeking",regularDesc:"Boek zoveel als je wilt",regularRule:"Boekbaar tot 6 maanden vooruit",hiddenCalNote:"Stam- en prioriteitsboekingen zijn nog niet onthuld. Alleen je eigen en reguliere boekingen worden getoond.",adminBooking:"via beheerder",bookOnBehalf:"Namens iemand boeken",loading:"Laden...",emailTab:"Email plakken",manualTab:"Handmatig",pasteEmail:"Plak hier de email...",parseEmail:"Email lezen",parsing:"Email wordt gelezen...",parsedResult:"Uit email gehaald",noMatch:"Kon geen geregistreerde eigenaar vinden",weekNotFound:"Kon de gevraagde week niet herkennen",parseError:"Kon de email niet verwerken.",confirmBooking:"Boeking bevestigen",parsedName:"Herkende naam",parsedWeek:"Gevraagde week",feedback:"Feedback",active:"Actief",opens:"Opent",closed:"Gesloten",weekNotYetOpen:"Opent voor boeking op",weekBookedByOther:"Al geboekt",confirmationEmailSent:"Er wordt een bevestigingsmail gestuurd naar",requestCancel:"Annulering aanvragen",pendingCancellation:"Annulering in behandeling",cancelRequested:"Annulering aangevraagd",approveCancellation:"Goedkeuren",rejectCancellation:"Afwijzen",pendingCancellations:"Openstaande annuleringen",cancellationsTab:"Annuleringen",paymentsTab:"Betalingen",noPendingCancellations:"Geen openstaande annuleringen",statsTitle:"Boekingsstatistieken",bookingsPerUser:"Boekingen per gebruiker",bookingsPerBranch:"Boekingen per stam",overallOccupancy:"Totale bezetting",bookingTimeline:"Boekingstijdlijn",totalWeeks:"Totaal weken",bookedWeeks:"Geboekte weken",availableWeeks:"Beschikbare weken",userName:"Gebruiker",branchLabel:"Stam",total:"Totaal",lastLogin:"Laatste login",adminOnly:"Beheerdertoegang vereist",noData:"Geen gegevens beschikbaar",mon:"Ma",tue:"Di",wed:"Wo",thu:"Do",fri:"Vr",sat:"Za",sun:"Zo",
-    costs:"Kosten",houseFee:"Huiskosten",perNight:"per nacht",perPerson:"Per persoon",cleaningFee:"Schoonmaakkosten",includeCleaning:"Eindschoonmaak toevoegen (\u20AC70)",totalCost:"Totaal",notPaid:"Niet betaald",invoiceSent:"Factuur verstuurd",paid:"Betaald",child04:"Kinderen 0\u20134 (gratis)",child59:"Kinderen 5\u20139",adult:"10 jaar en ouder",nights:"nachten",nightLabel:"Nacht",saveCosts:"Opslaan",costSummary:"Kostenoverzicht",paymentStatus:"Betaalstatus",paymentOverview:"Betalingsoverzicht",amount:"Bedrag",filterUnpaid:"Alleen onbetaald",allPayments:"Alle",whatsappHelp:"Hulp nodig?",bankInstructions:"Maak het bedrag over naar penningmeester@fargny.org \u2014 je ontvangt een factuur met betaalverzoek. Vragen? Bel Rogier: +31-6-57711402",
+    costs:"Kosten",houseFee:"Huiskosten",perNight:"per nacht",perPerson:"Per persoon",cleaningFee:"Schoonmaakkosten",includeCleaning:"Eindschoonmaak toevoegen (\u20AC70)",totalCost:"Totaal",notPaid:"Niet betaald",invoiceSent:"Factuur verstuurd",paid:"Betaald",child04:"Kinderen 0\u20134 (gratis)",child59:"Kinderen 5\u20139",adult:"10 jaar en ouder",nights:"nachten",nightLabel:"Nacht",saveCosts:"Opslaan",costSummary:"Kostenoverzicht",paymentStatus:"Betaalstatus",paymentOverview:"Betalingsoverzicht",amount:"Bedrag",filterUnpaid:"Alleen onbetaald",allPayments:"Alle",whatsappHelp:"Hulp nodig?",bankInstructions:"Maak het bedrag over naar penningmeester@fargny.org \u2014 je ontvangt een factuur met betaalverzoek.",
     openToShare:"Ik sta open om andere mensen te laten aansluiten",contactPerson:"Contact",addRemark:"Opmerking toevoegen (optioneel)",remarkLabel:"Opmerking",whoJoining:"Wie gaat er mee?",confirmBookQ:"Weet je zeker dat je wilt boeken",yesBook:"Ja, boeken",checkIn:"Inchecken",checkOut:"Uitchecken",maxNights:"Maximaal 7 nachten",customDates:"Aangepaste data",
-    boardBookings:"Speciale Evenementen",boardDesc:"Maak of meld je aan voor Fargny evenementen",boardRule:"Iedereen kan aanmaken of meedoen",specialWeekends:"Speciale evenementen",signUp:"Aanmelden",signedUp:"Aangemeld",cancelSignup:"Afmelden",participants:"deelnemers",boardEventsTab:"Speciale Evenementen",createBoardEvent:"Maak je eigen evenement aan",createdBy:"Aangemaakt door",eventName:"Evenementnaam",eventDesc:"Beschrijving",eventStart:"Startdatum",eventEnd:"Einddatum",noEvents:"Geen aankomende speciale evenementen",boardTab:"Evenementen",newEventBtn:"Nieuw evenement",viaOldCalendar:"Via oude kalender",userManagement:"Gebruikersbeheer",makeAdmin:"Maak beheerder",removeAdmin:"Beheerder verwijderen",adminTab:"Beheerder",downloadData:"CSV downloaden",loadingCalendar:"Bestaande kalender controleren\u2026",bookedInGcal:"Deze week is al geboekt via de bestaande kalender",
+    boardBookings:"Speciale Evenementen",boardDesc:"Maak of meld je aan voor Fargny evenementen",boardRule:"Iedereen kan aanmaken of meedoen",specialWeekends:"Speciale evenementen",signUp:"Aanmelden",signedUp:"Aangemeld",cancelSignup:"Afmelden",participants:"deelnemers",boardEventsTab:"Speciale Evenementen",createBoardEvent:"Maak je eigen evenement aan",createdBy:"Aangemaakt door",eventName:"Evenementnaam",eventDesc:"Beschrijving",eventStart:"Startdatum",eventEnd:"Einddatum",noEvents:"Geen aankomende speciale evenementen",boardTab:"Evenementen",newEventBtn:"Nieuw evenement",viaOldCalendar:"Via oude kalender",userManagement:"Gebruikersbeheer",makeAdmin:"Maak beheerder",removeAdmin:"Beheerder verwijderen",adminTab:"Beheerder",downloadData:"CSV downloaden",loadingCalendar:"Bestaande kalender controleren\u2026",bookedInGcal:"Deze week is al geboekt via de bestaande kalender",bookingConfirmed:"Je boeking is bevestigd. Je ontvangt apart een betaalverzoek. Bij vragen kun je een e-mail sturen naar penningmeester@fargny.org",dropdownNote:"Naam niet zichtbaar? Je bent mogelijk al geregistreerd. Probeer in te loggen.",forgotPassword:"Wachtwoord vergeten?",resetPasswordTitle:"Wachtwoord herstellen",resetPasswordSent:"Als dat e-mailadres is geregistreerd, is er een herstel-link verstuurd.",contactToReset:"Neem contact op met Moritz om je wachtwoord te herstellen",backToLogin:"Terug naar inloggen",sendResetLink:"Stuur herstel-link",confirmDates:"Je gaat boeken:",maxParticipants:"Maximaal aantal deelnemers",maxParticipantsHint:"Laat leeg voor onbeperkt",eventFull:"Vol",viewDetails:"Bekijk details",eventDetails:"Evenementdetails",
   },
 };
 
@@ -311,13 +329,21 @@ function BookingDialog({week, phase, user, registeredUsers=[], onConfirm, onCanc
     if(checkIn && checkOut){nightCount=diffDays(checkIn,checkOut);if(nightCount<1||nightCount>7)customValid=false;}
     else customValid=false;
   }
+  const effIn = (isRegular && useCustom && customValid) ? checkIn : (week?week.start:'');
+  const effOut = (isRegular && useCustom && customValid) ? checkOut : (week?week.end:'');
+  const effLabel = (effIn && effOut) ? (formatDate(effIn,lang)+' \u2014 '+formatDate(effOut,lang)) : weekLabel;
   const iS={width:'100%',padding:'10px 14px',border:'1.5px solid '+COLORS.border,borderRadius:10,fontSize:14,outline:'none',fontFamily:"'DM Sans',sans-serif",boxSizing:'border-box'};
 
   return (
     <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.3)',zIndex:300,display:'flex',alignItems:'center',justifyContent:'center'}} onClick={onCancel}>
       <div onClick={e=>e.stopPropagation()} style={{background:COLORS.white,borderRadius:16,padding:28,width:460,maxHeight:'85vh',overflow:'auto',boxShadow:'0 12px 48px rgba(0,0,0,0.15)'}}>
         <h3 style={{fontSize:18,fontWeight:700,color:COLORS.text,margin:'0 0 6px 0',fontFamily:"'Playfair Display',Georgia,serif"}}>{t.confirmBooking}</h3>
-        <p style={{fontSize:14,color:COLORS.text,margin:'0 0 20px 0'}}>{t.confirmBookQ} {weekLabel}?</p>
+        <p style={{fontSize:14,color:COLORS.text,margin:'0 0 8px 0'}}>{t.confirmBookQ}?</p>
+        <div style={{background:COLORS.bg,borderRadius:10,padding:'10px 14px',marginBottom:16,fontSize:13,color:COLORS.text}}>
+          <div style={{fontSize:11,fontWeight:600,color:COLORS.muted,marginBottom:4}}>{t.confirmDates}</div>
+          <div style={{fontWeight:600}}>{effLabel}</div>
+          <div style={{fontSize:12,color:COLORS.muted,marginTop:2}}>{t.checkIn}: {effIn} → {t.checkOut}: {effOut}</div>
+        </div>
         {isRegular && <div style={{marginBottom:16}}>
           <label style={{display:'flex',alignItems:'center',gap:8,fontSize:13,color:COLORS.text,cursor:'pointer',marginBottom:10}}>
             <input type="checkbox" checked={useCustom} onChange={()=>setUseCustom(!useCustom)}/>{t.customDates}
@@ -557,10 +583,12 @@ function BookingView({user, bookings=[], myBookings=[], weeks, year, setYear, ph
   const [evStart, setEvStart] = React.useState('');
   const [evEnd, setEvEnd] = React.useState('');
   const [evDesc, setEvDesc] = React.useState('');
+  const [evMax, setEvMax] = React.useState('');
+  const [eventDetail, setEventDetail] = React.useState(null);
   const submitEvent = async ()=>{
     if(!evName || !evStart || !evEnd) return;
-    await onCreateEvent({name:evName,start_date:evStart,end_date:evEnd,description:evDesc});
-    setEvName('');setEvStart('');setEvEnd('');setEvDesc('');setShowNewEvent(false);
+    await onCreateEvent({name:evName,start_date:evStart,end_date:evEnd,description:evDesc,max_participants:evMax?parseInt(evMax):null});
+    setEvName('');setEvStart('');setEvEnd('');setEvDesc('');setEvMax('');setShowNewEvent(false);
   };
 
   const myBookingMap = {};
@@ -573,12 +601,12 @@ function BookingView({user, bookings=[], myBookings=[], weeks, year, setYear, ph
   (branchData||[]).forEach(br=>{branchCounts[br.id]=br.member_count||0;});
 
   return (
-    <div style={{display:'flex',maxWidth:1200,margin:'0 auto',gap:24,padding:'24px 20px'}}>
+    <div className="fargny-booking-layout" style={{display:'flex',maxWidth:1200,margin:'0 auto',gap:24,padding:'24px 20px'}}>
       {costBooking && <CostCalculator booking={costBooking} weeks={weeks} onSave={(id,guests,total,includeCleaning)=>{onSaveGuests(id,guests,includeCleaning);setCostBooking(null);}} onClose={()=>setCostBooking(null)} t={t} lang={lang}/>}
       {bookDialog && <BookingDialog week={bookDialog.week} phase={bookDialog.phase} user={user} registeredUsers={registeredUsers} onConfirm={opts=>{onBook(bookDialog.week,bookDialog.phase,opts);setBookDialog(null);}} onCancel={()=>setBookDialog(null)} t={t} lang={lang}/>}
 
       {/* SIDEBAR */}
-      <div style={{width:300,flexShrink:0,display:'flex',flexDirection:'column',gap:16}}>
+      <div className="fargny-sidebar" style={{width:300,flexShrink:0,display:'flex',flexDirection:'column',gap:16}}>
         <div style={{background:COLORS.white,borderRadius:14,padding:20,boxShadow:'0 1px 8px rgba(0,0,0,0.04)'}}>
           <h3 style={{fontSize:11,fontWeight:700,color:COLORS.muted,textTransform:'uppercase',letterSpacing:'1px',margin:'0 0 12px 0'}}>{t.bookingPhase}</h3>
           <div style={{display:'flex',flexDirection:'column',gap:6}}>
@@ -639,7 +667,7 @@ function BookingView({user, bookings=[], myBookings=[], weeks, year, setYear, ph
       </div>
 
       {/* MAIN CONTENT */}
-      <div style={{flex:1,minWidth:0}}>
+      <div className="fargny-main" style={{flex:1,minWidth:0}}>
         {phase==='board' ?
           <div style={{background:COLORS.white,borderRadius:14,padding:20,boxShadow:'0 1px 8px rgba(0,0,0,0.04)'}}>
             <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:12,marginBottom:16}}>
@@ -662,6 +690,9 @@ function BookingView({user, bookings=[], myBookings=[], weeks, year, setYear, ph
                 </label>
               </div>
               <textarea placeholder={t.eventDesc} value={evDesc} onChange={e=>setEvDesc(e.target.value)} rows={3} style={{padding:'10px 12px',border:'1px solid '+COLORS.border,borderRadius:8,fontSize:13,resize:'vertical',fontFamily:"'DM Sans',sans-serif"}}/>
+              <label style={{fontSize:11,color:COLORS.muted,fontWeight:600}}>{t.maxParticipants}
+                <input type="number" min="1" placeholder={t.maxParticipantsHint} value={evMax} onChange={e=>setEvMax(e.target.value)} style={{width:'100%',marginTop:4,padding:'9px 10px',border:'1px solid '+COLORS.border,borderRadius:8,fontSize:13,fontFamily:"'DM Sans',sans-serif"}}/>
+              </label>
               <button onClick={submitEvent} disabled={!evName||!evStart||!evEnd} style={{padding:'10px 0',background:(!evName||!evStart||!evEnd)?'#D4C5B5':COLORS.board,border:'none',borderRadius:10,fontSize:14,fontWeight:600,color:'white',cursor:(!evName||!evStart||!evEnd)?'default':'pointer',fontFamily:"'DM Sans',sans-serif"}}>{t.createBoardEvent}</button>
             </div>}
 
@@ -669,20 +700,41 @@ function BookingView({user, bookings=[], myBookings=[], weeks, year, setYear, ph
             : <div style={{display:'flex',flexDirection:'column',gap:10}}>
                 {boardEvents.map(ev=>{
                   const isMember = ev.user_signed_up;
-                  return <div key={ev.id} style={{display:'flex',alignItems:'flex-start',gap:12,padding:'14px 18px',borderRadius:12,background:COLORS.board+'08',borderLeft:'3px solid '+COLORS.board}}>
+                  const cnt = ev.signup_count||0;
+                  const max = ev.max_participants||null;
+                  const full = max!==null && cnt>=max && !isMember;
+                  const countLabel = max!==null ? (cnt+' / '+max+' '+t.participants) : (cnt+' '+t.participants);
+                  return <div key={ev.id} onClick={()=>setEventDetail(ev)} style={{display:'flex',alignItems:'flex-start',gap:12,padding:'14px 18px',borderRadius:12,background:COLORS.board+'08',borderLeft:'3px solid '+COLORS.board,cursor:'pointer'}}>
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{fontSize:15,fontWeight:600,color:COLORS.text}}>{ev.name}</div>
                       <div style={{fontSize:13,color:COLORS.muted,marginTop:2}}>{formatDate(ev.start_date,lang)} &ndash; {formatDate(ev.end_date,lang)}</div>
                       {ev.description && <div style={{fontSize:12,color:COLORS.muted,marginTop:4,fontStyle:'italic'}}>{'\u{1F4AC}'} {ev.description}</div>}
                       {ev.creator_name && <div style={{fontSize:11,color:COLORS.muted,marginTop:4}}>{t.createdBy}: <strong>{ev.creator_name}</strong></div>}
-                      <div style={{fontSize:12,color:COLORS.board,marginTop:6,fontWeight:600}}>{ev.signup_count||0} {t.participants}</div>
+                      <div style={{fontSize:12,color:full?COLORS.danger:COLORS.board,marginTop:6,fontWeight:600}}>{countLabel}{full?' \u00b7 '+t.eventFull:''}</div>
                       {ev.participants && ev.participants.length>0 && <div style={{display:'flex',flexWrap:'wrap',gap:4,marginTop:6}}>
                         {ev.participants.map(p=><span key={p.user_id} style={{fontSize:11,padding:'3px 9px',background:COLORS.board+'18',color:COLORS.board,borderRadius:10,fontWeight:500}}>{p.display_name}</span>)}
                       </div>}
                     </div>
-                    <button onClick={()=>{isMember?onUnsignUpBoard(ev.id):onSignUpBoard(ev.id);}} style={{padding:'8px 14px',background:isMember?'transparent':COLORS.board,border:isMember?'1.5px solid '+COLORS.board:'none',borderRadius:10,fontSize:12,color:isMember?COLORS.board:'white',cursor:'pointer',fontWeight:600,whiteSpace:'nowrap',fontFamily:"'DM Sans',sans-serif"}}>{isMember?('\u2715 '+t.cancelSignup):('\u2705 '+t.signUp)}</button>
+                    <button onClick={(e)=>{e.stopPropagation();isMember?onUnsignUpBoard(ev.id):(!full&&onSignUpBoard(ev.id));}} disabled={full} style={{padding:'8px 14px',background:full?'#D4C5B5':(isMember?'transparent':COLORS.board),border:isMember?'1.5px solid '+COLORS.board:'none',borderRadius:10,fontSize:12,color:isMember?COLORS.board:'white',cursor:full?'default':'pointer',fontWeight:600,whiteSpace:'nowrap',fontFamily:"'DM Sans',sans-serif",minHeight:44}}>{isMember?('\u2715 '+t.cancelSignup):(full?t.eventFull:('\u2705 '+t.signUp))}</button>
                   </div>;
                 })}
+                {eventDetail && <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:300,display:'flex',alignItems:'center',justifyContent:'center',padding:16}} onClick={()=>setEventDetail(null)}>
+                  <div onClick={e=>e.stopPropagation()} style={{background:COLORS.white,borderRadius:14,padding:24,maxWidth:480,width:'100%',maxHeight:'85vh',overflow:'auto',boxShadow:'0 12px 48px rgba(0,0,0,0.18)'}}>
+                    <h3 style={{fontSize:18,fontWeight:700,color:COLORS.text,margin:'0 0 4px 0',fontFamily:"'Playfair Display',Georgia,serif"}}>{eventDetail.name}</h3>
+                    <div style={{fontSize:12,color:COLORS.muted,marginBottom:14,textTransform:'uppercase',letterSpacing:'0.5px'}}>{t.eventDetails}</div>
+                    <div style={{fontSize:13,color:COLORS.text,marginBottom:8}}><strong>{t.eventStart}:</strong> {formatDate(eventDetail.start_date,lang)}</div>
+                    <div style={{fontSize:13,color:COLORS.text,marginBottom:8}}><strong>{t.eventEnd}:</strong> {formatDate(eventDetail.end_date,lang)}</div>
+                    {eventDetail.creator_name && <div style={{fontSize:13,color:COLORS.text,marginBottom:8}}><strong>{t.createdBy}:</strong> {eventDetail.creator_name}</div>}
+                    {eventDetail.description && <div style={{fontSize:13,color:COLORS.text,marginBottom:12,whiteSpace:'pre-wrap'}}>{eventDetail.description}</div>}
+                    <div style={{fontSize:13,color:COLORS.board,fontWeight:600,marginBottom:8}}>
+                      {(eventDetail.signup_count||0)}{eventDetail.max_participants?(' / '+eventDetail.max_participants):''} {t.participants}
+                    </div>
+                    {eventDetail.participants && eventDetail.participants.length>0 && <div style={{display:'flex',flexWrap:'wrap',gap:4,marginBottom:14}}>
+                      {eventDetail.participants.map(p=><span key={p.user_id} style={{fontSize:12,padding:'4px 10px',background:COLORS.board+'18',color:COLORS.board,borderRadius:10,fontWeight:500}}>{p.display_name}</span>)}
+                    </div>}
+                    <button onClick={()=>setEventDetail(null)} style={{width:'100%',padding:'11px 0',background:COLORS.bg,border:'none',borderRadius:10,fontSize:14,fontWeight:600,color:COLORS.text,cursor:'pointer',fontFamily:"'DM Sans',sans-serif"}}>{t.close}</button>
+                  </div>
+                </div>}
               </div>}
           </div>
         : <>
@@ -993,18 +1045,27 @@ function LoginScreen({t, lang, onLangToggle, onLogin}){
           {mode==='login' && <>
             <input style={iS} type="email" placeholder={t.email} value={email} onChange={e=>setEmail(e.target.value)}/>
             <input style={iS} type="password" placeholder={t.password} value={pw} onChange={e=>setPw(e.target.value)}/>
+            <div style={{textAlign:'right',marginTop:-4,marginBottom:8}}>
+              <button type="button" onClick={()=>{setMode('forgot');setError('');}} style={{background:'none',border:'none',color:COLORS.accent,fontSize:12,cursor:'pointer',padding:0,fontFamily:"'DM Sans',sans-serif"}}>{t.forgotPassword}</button>
+            </div>
+          </>}
+          {mode==='forgot' && <>
+            <p style={{fontSize:13,color:COLORS.text,margin:'0 0 12px 0'}}>{t.contactToReset}</p>
+            <a href="https://wa.me/4915788611151" target="_blank" rel="noopener noreferrer" style={{display:'block',textAlign:'center',padding:'12px 0',background:'#25D366',color:'white',borderRadius:10,textDecoration:'none',fontWeight:600,fontSize:14,marginBottom:8}}>WhatsApp Moritz</a>
+            <button type="button" onClick={()=>{setMode('login');setError('');}} style={{width:'100%',padding:'10px 0',background:'none',border:'1px solid '+COLORS.border,borderRadius:10,fontSize:13,color:COLORS.muted,cursor:'pointer',fontFamily:"'DM Sans',sans-serif"}}>{t.backToLogin}</button>
           </>}
           {mode==='register' && <>
             <select style={iS} value={selShareholder} onChange={e=>setSelShareholder(e.target.value)}>
               <option value="">{t.pickShareholder}</option>
               {available.map(s=><option key={s.id} value={s.id}>{s.full_name} ({s.branch_name})</option>)}
             </select>
+            <div style={{fontSize:11,color:COLORS.muted,marginTop:-8,marginBottom:12,fontStyle:'italic'}}>{t.dropdownNote}</div>
             {selectedBranch && <div style={{display:'flex',alignItems:'center',gap:8,padding:'8px 12px',background:selectedBranch.color+'10',borderRadius:8,marginBottom:12,fontSize:13}}><div style={{width:10,height:10,borderRadius:3,background:selectedBranch.color}}/>{selectedBranch.name}</div>}
             <input style={iS} type="email" placeholder={t.email} value={email} onChange={e=>setEmail(e.target.value)}/>
             <input style={iS} type="password" placeholder={t.password} value={pw} onChange={e=>setPw(e.target.value)}/>
             <input style={iS} type="password" placeholder={t.confirmPassword} value={pw2} onChange={e=>setPw2(e.target.value)}/>
           </>}
-          <button type="submit" disabled={loading} style={{width:'100%',padding:'14px 0',background:loading?'#D4C5B5':COLORS.accent,border:'none',borderRadius:10,fontSize:15,fontWeight:700,color:COLORS.white,cursor:loading?'default':'pointer',fontFamily:"'DM Sans',sans-serif",marginTop:8}}>{loading?t.loading:mode==='login'?t.signIn:t.createAccount}</button>
+          {mode!=='forgot' && <button type="submit" disabled={loading} style={{width:'100%',padding:'14px 0',background:loading?'#D4C5B5':COLORS.accent,border:'none',borderRadius:10,fontSize:15,fontWeight:700,color:COLORS.white,cursor:loading?'default':'pointer',fontFamily:"'DM Sans',sans-serif",marginTop:8}}>{loading?t.loading:mode==='login'?t.signIn:t.createAccount}</button>}
         </form>
       </div>
     </div>
@@ -1202,7 +1263,7 @@ function App(){
         check_in_date:opts.custom_start||null,
         check_out_date:opts.custom_end||null,
       })});
-      showToast(t.booked+': '+formatDate(week.start,lang)+' \u2014 '+formatDate(week.end,lang)+'\n'+t.confirmationEmailSent+' '+(user.email||''));
+      showToast(t.bookingConfirmed);
       await refreshData();
     } catch(e){showToast(e.message);}
   };
@@ -1291,13 +1352,13 @@ function App(){
       <Toast message={toast}/>
 
       {/* NAVBAR */}
-      <div style={{background:COLORS.white,borderBottom:'1px solid '+COLORS.border,padding:'12px 20px',display:'flex',alignItems:'center',justifyContent:'space-between',position:'sticky',top:0,zIndex:100,flexWrap:'wrap',gap:8}}>
+      <div className="fargny-header" style={{background:COLORS.white,borderBottom:'1px solid '+COLORS.border,padding:'12px 20px',display:'flex',alignItems:'center',justifyContent:'space-between',position:'sticky',top:0,zIndex:100,flexWrap:'wrap',gap:8}}>
         <div style={{display:'flex',alignItems:'center',gap:10}}>
           <span style={{fontSize:22}}>{'\u{1F3E1}'}</span>
           <div><h1 style={{fontSize:18,fontWeight:700,color:COLORS.text,margin:0,fontFamily:"'Playfair Display',Georgia,serif"}}>Fargny</h1>
             <p style={{fontSize:11,color:COLORS.muted,margin:0}}>{year}{pendingCount>0?' \u00B7 '+pendingCount+' pending':''}</p></div>
         </div>
-        <div style={{display:'flex',gap:0,background:COLORS.bg,borderRadius:10,padding:3}}>
+        <div className="fargny-tabs" style={{display:'flex',gap:0,background:COLORS.bg,borderRadius:10,padding:3}}>
           {navItems.map(v=><button key={v.id} onClick={()=>setView(v.id)} style={{padding:'7px 16px',border:'none',borderRadius:8,background:view===v.id?COLORS.white:'transparent',color:view===v.id?COLORS.text:COLORS.muted,fontWeight:view===v.id?600:400,cursor:'pointer',fontSize:13,fontFamily:"'DM Sans',sans-serif",boxShadow:view===v.id?'0 1px 4px rgba(0,0,0,0.08)':'none'}}>{v.emoji} {v.label}</button>)}
         </div>
         <div style={{display:'flex',alignItems:'center',gap:10}}>

@@ -60,15 +60,16 @@ function board_events_list() {
             }
         }
         return [
-            'id'            => $eid,
-            'name'          => $ev['name'],
-            'start_date'    => $ev['start_date'],
-            'end_date'      => $ev['end_date'],
-            'description'   => $ev['description'],
-            'creator_name'  => $ev['creator_name'],
-            'signup_count'  => (int)$ev['signup_count'],
-            'participants'  => $participants,
-            'user_signed_up'=> $userSignedUp,
+            'id'              => $eid,
+            'name'            => $ev['name'],
+            'start_date'      => $ev['start_date'],
+            'end_date'        => $ev['end_date'],
+            'description'     => $ev['description'],
+            'creator_name'    => $ev['creator_name'],
+            'signup_count'    => (int)$ev['signup_count'],
+            'max_participants'=> isset($ev['max_participants']) && $ev['max_participants']!==null ? (int)$ev['max_participants'] : null,
+            'participants'    => $participants,
+            'user_signed_up'  => $userSignedUp,
         ];
     }, $events);
 
@@ -85,12 +86,13 @@ function board_events_create() {
     $start = $body['start_date'] ?? '';
     $end   = $body['end_date'] ?? '';
     $desc  = trim($body['description'] ?? '');
+    $maxP  = isset($body['max_participants']) && $body['max_participants']!==null && $body['max_participants']!=='' ? (int)$body['max_participants'] : null;
 
     if (!$name || !$start || !$end) json_error('name, start_date, end_date required');
 
     $db = get_db();
-    $db->prepare("INSERT INTO fargny_board_events (name, start_date, end_date, description, created_by) VALUES (?, ?, ?, ?, ?)")
-       ->execute([$name, $start, $end, $desc, $user['id']]);
+    $db->prepare("INSERT INTO fargny_board_events (name, start_date, end_date, description, max_participants, created_by) VALUES (?, ?, ?, ?, ?, ?)")
+       ->execute([$name, $start, $end, $desc, $maxP, $user['id']]);
     $eventId = (int)$db->lastInsertId();
 
     // Auto-signup the creator as the first participant
@@ -107,14 +109,23 @@ function board_events_signup(int $eventId) {
     $db = get_db();
 
     // Check event exists
-    $stmt = $db->prepare("SELECT id FROM fargny_board_events WHERE id = ? LIMIT 1");
+    $stmt = $db->prepare("SELECT id, max_participants FROM fargny_board_events WHERE id = ? LIMIT 1");
     $stmt->execute([$eventId]);
-    if (!$stmt->fetch()) json_error('Event not found', 404);
+    $ev = $stmt->fetch();
+    if (!$ev) json_error('Event not found', 404);
 
     // Check not already signed up
     $stmt = $db->prepare("SELECT id FROM fargny_board_signups WHERE event_id = ? AND user_id = ? LIMIT 1");
     $stmt->execute([$eventId, $user['id']]);
     if ($stmt->fetch()) json_error('Already signed up');
+
+    // Enforce max_participants
+    if (!empty($ev['max_participants'])) {
+        $cstmt = $db->prepare("SELECT COUNT(*) AS c FROM fargny_board_signups WHERE event_id = ?");
+        $cstmt->execute([$eventId]);
+        $cnt = (int)$cstmt->fetch()['c'];
+        if ($cnt >= (int)$ev['max_participants']) json_error('This event is full');
+    }
 
     $db->prepare("INSERT INTO fargny_board_signups (event_id, user_id) VALUES (?, ?)")
        ->execute([$eventId, $user['id']]);
