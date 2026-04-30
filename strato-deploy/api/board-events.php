@@ -3,6 +3,21 @@
 // Board Events: CRUD and signup
 // ============================================================
 
+// True if fargny_board_events has the optional max_participants column.
+// Cached per-request so we don't introspect the schema repeatedly.
+function board_events_has_max_col(): bool {
+    static $cached = null;
+    if ($cached !== null) return $cached;
+    try {
+        $db = get_db();
+        $stmt = $db->query("SHOW COLUMNS FROM fargny_board_events LIKE 'max_participants'");
+        $cached = (bool)$stmt->fetch();
+    } catch (Exception $e) {
+        $cached = false;
+    }
+    return $cached;
+}
+
 function handle_board_events(string $action, string $id, string $method) {
     if ($action === '' && $method === 'GET') {
         board_events_list();
@@ -91,8 +106,13 @@ function board_events_create() {
     if (!$name || !$start || !$end) json_error('name, start_date, end_date required');
 
     $db = get_db();
-    $db->prepare("INSERT INTO fargny_board_events (name, start_date, end_date, description, max_participants, created_by) VALUES (?, ?, ?, ?, ?, ?)")
-       ->execute([$name, $start, $end, $desc, $maxP, $user['id']]);
+    if (board_events_has_max_col()) {
+        $db->prepare("INSERT INTO fargny_board_events (name, start_date, end_date, description, max_participants, created_by) VALUES (?, ?, ?, ?, ?, ?)")
+           ->execute([$name, $start, $end, $desc, $maxP, $user['id']]);
+    } else {
+        $db->prepare("INSERT INTO fargny_board_events (name, start_date, end_date, description, created_by) VALUES (?, ?, ?, ?, ?)")
+           ->execute([$name, $start, $end, $desc, $user['id']]);
+    }
     $eventId = (int)$db->lastInsertId();
 
     // Auto-signup the creator as the first participant
@@ -109,7 +129,11 @@ function board_events_signup(int $eventId) {
     $db = get_db();
 
     // Check event exists
-    $stmt = $db->prepare("SELECT id, max_participants FROM fargny_board_events WHERE id = ? LIMIT 1");
+    $hasMax = board_events_has_max_col();
+    $sql = $hasMax
+        ? "SELECT id, max_participants FROM fargny_board_events WHERE id = ? LIMIT 1"
+        : "SELECT id FROM fargny_board_events WHERE id = ? LIMIT 1";
+    $stmt = $db->prepare($sql);
     $stmt->execute([$eventId]);
     $ev = $stmt->fetch();
     if (!$ev) json_error('Event not found', 404);
@@ -119,8 +143,8 @@ function board_events_signup(int $eventId) {
     $stmt->execute([$eventId, $user['id']]);
     if ($stmt->fetch()) json_error('Already signed up');
 
-    // Enforce max_participants
-    if (!empty($ev['max_participants'])) {
+    // Enforce max_participants (only when the column exists)
+    if ($hasMax && !empty($ev['max_participants'])) {
         $cstmt = $db->prepare("SELECT COUNT(*) AS c FROM fargny_board_signups WHERE event_id = ?");
         $cstmt->execute([$eventId]);
         $cnt = (int)$cstmt->fetch()['c'];
