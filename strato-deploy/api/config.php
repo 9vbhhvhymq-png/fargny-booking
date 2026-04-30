@@ -3,6 +3,37 @@
 // Fargny Booking System — Configuration & Helpers
 // ============================================================
 
+// Hide PHP warnings/notices from response so they never corrupt JSON output.
+@ini_set('display_errors', '0');
+@ini_set('display_startup_errors', '0');
+error_reporting(0);
+
+// Buffer all output: anything echoed accidentally before json_response()
+// is captured and discarded so the response stays valid JSON.
+if (!ob_get_level()) ob_start();
+
+// Convert uncaught exceptions and fatal errors into JSON error responses.
+set_exception_handler(function ($e) {
+    if (function_exists('ob_get_length') && ob_get_length()) { @ob_clean(); }
+    if (!headers_sent()) {
+        header('Content-Type: application/json; charset=utf-8');
+        http_response_code(500);
+    }
+    echo json_encode(['success' => false, 'error' => 'Server error: ' . $e->getMessage()]);
+    exit;
+});
+register_shutdown_function(function () {
+    $err = error_get_last();
+    if ($err && in_array($err['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR])) {
+        if (function_exists('ob_get_length') && ob_get_length()) { @ob_clean(); }
+        if (!headers_sent()) {
+            header('Content-Type: application/json; charset=utf-8');
+            http_response_code(500);
+        }
+        echo json_encode(['success' => false, 'error' => 'Fatal: ' . $err['message']]);
+    }
+});
+
 // Load .env from parent directory (not web-accessible)
 function load_env() {
     $envFile = __DIR__ . '/../.env';
@@ -69,7 +100,16 @@ function cors_headers() {
 
 // ---- JSON helpers ----
 function json_response($data, int $code = 200) {
-    http_response_code($code);
+    // Discard any stray output (PHP warnings, BOMs, accidental whitespace)
+    // captured by the output buffer started in config.php so the body is
+    // pure JSON.
+    if (function_exists('ob_get_length') && ob_get_length()) { @ob_clean(); }
+    if (!headers_sent()) {
+        header('Content-Type: application/json; charset=utf-8');
+        http_response_code($code);
+    } else {
+        http_response_code($code);
+    }
     echo json_encode($data, JSON_UNESCAPED_UNICODE);
     exit;
 }

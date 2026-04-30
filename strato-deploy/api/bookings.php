@@ -176,23 +176,42 @@ function bookings_create() {
             if ($nights < 1) json_error('Check-out must be after check-in');
         }
 
-        // Reject if the week is already occupied by another Fargny booking
-        $stmt = $db->prepare("SELECT id FROM fargny_bookings WHERE week_id = ? AND cancellation_status NOT IN ('approved') LIMIT 1");
-        $stmt->execute([$weekId]);
-        if ($stmt->fetch()) json_error('This week is already booked');
+        // Compute the actual date range we are about to reserve. Default to
+        // the full week if the user did not pick custom dates.
+        $rangeStart = $checkIn ?: ($week['start'] ?? null);
+        $rangeEnd   = $checkOut ?: ($week['end'] ?? null);
 
-        // Reject if the week overlaps with any Google Calendar event
-        if ($week) {
+        // Reject if the chosen range overlaps with another Fargny booking
+        if ($rangeStart && $rangeEnd) {
+            $stmt = $db->prepare("
+                SELECT b.id FROM fargny_bookings b
+                WHERE b.cancellation_status NOT IN ('approved')
+                  AND COALESCE(b.check_in_date, ?) <= ?
+                  AND COALESCE(b.check_out_date, ?) >= ?
+                LIMIT 1
+            ");
+            // params: (week.start fallback for incoming check_in vs. our rangeEnd),
+            //         (week.end fallback for incoming check_out vs. our rangeStart)
+            $stmt->execute([$rangeStart, $rangeEnd, $rangeEnd, $rangeStart]);
+            if ($stmt->fetch()) json_error('These dates overlap with an existing booking');
+        } else {
+            // Fallback: same-week-id check
+            $stmt = $db->prepare("SELECT id FROM fargny_bookings WHERE week_id = ? AND cancellation_status NOT IN ('approved') LIMIT 1");
+            $stmt->execute([$weekId]);
+            if ($stmt->fetch()) json_error('This week is already booked');
+        }
+
+        // Reject only if the chosen DATE RANGE overlaps any Google Calendar
+        // event — single-day legacy events no longer block the whole week.
+        if ($rangeStart && $rangeEnd) {
             require_once __DIR__ . '/google-calendar.php';
             $gcalEvents = @gcal_get_events();
             if (is_array($gcalEvents)) {
-                $ws = $week['start']; $we = $week['end'];
                 foreach ($gcalEvents as $ev) {
                     $es = $ev['start_date'] ?? ''; $ee = $ev['end_date'] ?? $es;
                     if (!$es) continue;
-                    // overlap: es <= we && ee >= ws
-                    if ($es <= $we && $ee >= $ws) {
-                        json_error('This week is already booked via the existing calendar');
+                    if ($es <= $rangeEnd && $ee >= $rangeStart) {
+                        json_error('These dates are already booked via the existing calendar');
                     }
                 }
             }

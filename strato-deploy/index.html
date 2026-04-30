@@ -52,7 +52,17 @@ async function api(path, options = {}) {
   const headers = { 'Content-Type': 'application/json' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
   const res = await fetch(`${API_BASE}/${path}`, { ...options, headers });
-  const data = await res.json();
+  const text = await res.text();
+  let data;
+  try { data = text ? JSON.parse(text) : null; }
+  catch (e) {
+    console.error('[Fargny] Invalid JSON from', path, '->', text.slice(0, 500));
+    throw new Error('Server returned invalid response (HTTP ' + res.status + ')');
+  }
+  if (!data) {
+    if (!res.ok) throw new Error('Server error (HTTP ' + res.status + ')');
+    return null;
+  }
   if (!data.success) throw new Error(data.error || 'API error');
   return data.data;
 }
@@ -313,13 +323,13 @@ function CostCalculator({booking, weeks, onSave, onClose, t, lang}){
 // ═══════════════════════════════════════════════════════
 // BOOKING DIALOG
 // ═══════════════════════════════════════════════════════
-function BookingDialog({week, phase, user, registeredUsers=[], onConfirm, onCancel, t, lang}){
+function BookingDialog({week, phase, presetCheckIn, presetCheckOut, user, registeredUsers=[], onConfirm, onCancel, t, lang}){
   const [openToShare, setOpenToShare] = React.useState(false);
   const [remark, setRemark] = React.useState('');
   const [linked, setLinked] = React.useState([]);
-  const [useCustom, setUseCustom] = React.useState(false);
-  const [checkIn, setCheckIn] = React.useState(week?week.start:'');
-  const [checkOut, setCheckOut] = React.useState(week?week.end:'');
+  const [useCustom, setUseCustom] = React.useState(!!(presetCheckIn||presetCheckOut));
+  const [checkIn, setCheckIn] = React.useState(presetCheckIn || (week?week.start:''));
+  const [checkOut, setCheckOut] = React.useState(presetCheckOut || (week?week.end:''));
   const isRegular = phase==='regular';
   const others = registeredUsers.filter(u=>u.email!==user.email);
   const toggleLinked = (email)=>setLinked(prev=>prev.includes(email)?prev.filter(e=>e!==email):[...prev,email]);
@@ -522,22 +532,45 @@ function AdminPanel({registeredUsers=[], weeks, year, bookings=[], onBooked, onA
 // ═══════════════════════════════════════════════════════
 // WEEK ROW
 // ═══════════════════════════════════════════════════════
-function WeekRow({week, myBooking, allBookings=[], gcalEvents=[], onBook, onRequestCancel, user, phase, clanBookedByBranch, userBookedPriority, phaseActive, t, lang}){
+function WeekRow({week, myBooking, allBookings=[], gcalEvents=[], onBook, onRequestCancel, user, phase, clanBookedByBranch, userBookedPriority, phaseActive, t, lang, highlight}){
   const hasMyBooking = !!myBooking;
   const userBranch = FAMILY_BRANCHES.find(b=>b.id===user.branch_id);
   const isPending = hasMyBooking && myBooking.cancellation_status==='pending';
-  let weekBookedByOther=false, weekNotOpen=false;
+  let weekBookedByOther=false, weekNotOpen=false, partialBlock=null;
   if(phase==='regular' && !hasMyBooking){
     const confirmed = allBookings.filter(b=>b.week_id===week.id && b.cancellation_status!=='approved');
-    if(confirmed.length>0) weekBookedByOther=true;
-    // Also treat as booked if any Google Calendar event overlaps the Sat-Fri range
-    if(!weekBookedByOther && gcalEvents && gcalEvents.length){
-      const ws=week.start, we=week.end;
-      for(const ev of gcalEvents){
-        const es=ev.start_date||'', ee=ev.end_date||es;
-        if(!es) continue;
-        if(es<=we && ee>=ws){weekBookedByOther=true;break;}
+    // For regular bookings, work out per-day occupancy from gcal so a single
+    // legacy event in the middle of the week doesn't block the entire week.
+    const ws=week.start, we=week.end;
+    const dayBlocked = {}; // ISO -> true
+    const allDays = [];
+    {
+      const d = new Date(ws); const endD = new Date(we);
+      while (d <= endD) { const iso = toISO(d); allDays.push(iso); dayBlocked[iso]=false; d.setDate(d.getDate()+1); }
+    }
+    // App bookings block their actual check_in..check_out range (or full week if not set)
+    confirmed.forEach(b=>{
+      const cs=b.check_in_date||ws, ce=b.check_out_date||we;
+      allDays.forEach(d=>{ if(d>=cs && d<=ce) dayBlocked[d]=true; });
+    });
+    // Google Calendar events block only the days they actually cover
+    (gcalEvents||[]).forEach(ev=>{
+      const es=ev.start_date||'', ee=ev.end_date||es; if(!es) return;
+      allDays.forEach(d=>{ if(d>=es && d<=ee) dayBlocked[d]=true; });
+    });
+    const blockedCount = allDays.filter(d=>dayBlocked[d]).length;
+    if(blockedCount===allDays.length) weekBookedByOther = true;
+    else if(blockedCount>0){
+      // Compute the longest free contiguous range so we can suggest one.
+      let bestStart=null, bestEnd=null, bestLen=0, curStart=null;
+      for(const d of allDays){
+        if(!dayBlocked[d]){
+          if(!curStart) curStart=d;
+          const len = (new Date(d)-new Date(curStart))/(1000*60*60*24)+1;
+          if(len>bestLen){ bestLen=len; bestStart=curStart; bestEnd=d; }
+        } else { curStart=null; }
       }
+      partialBlock = { freeStart: bestStart, freeEnd: bestEnd, blockedCount, totalCount: allDays.length };
     }
     if(!isWeekBookableRegular(week.start)) weekNotOpen=true;
   }
@@ -551,7 +584,7 @@ function WeekRow({week, myBooking, allBookings=[], gcalEvents=[], onBook, onRequ
   const pm = hasMyBooking ? getPhaseMeta(myBooking.phase,t) : null;
 
   return (
-    <div style={{display:'flex',alignItems:'center',padding:'10px 16px',borderRadius:10,background:isPending?'#FEF2F210':hasMyBooking?barColor+'0D':'transparent',transition:'all 0.2s',gap:12,borderLeft:isPending?'3px solid '+COLORS.warning:hasMyBooking?'3px solid '+barColor:'3px solid transparent',opacity:isPending?0.7:1}}>
+    <div data-week-id={week.id} style={{display:'flex',alignItems:'center',padding:'10px 16px',borderRadius:10,background:highlight?COLORS.success+'18':isPending?'#FEF2F210':hasMyBooking?barColor+'0D':'transparent',transition:'all 0.2s',gap:12,borderLeft:highlight?'3px solid '+COLORS.success:isPending?'3px solid '+COLORS.warning:hasMyBooking?'3px solid '+barColor:'3px solid transparent',opacity:isPending?0.7:1}}>
       <div style={{width:36,textAlign:'center',fontSize:13,fontWeight:600,color:COLORS.muted}}>W{week.weekNum}</div>
       <div style={{flex:1,minWidth:0}}>
         <div style={{fontSize:14,fontWeight:500,color:COLORS.text,textDecoration:isPending?'line-through':'none'}}>{formatDate(week.start,lang)} &mdash; {formatDate(week.end,lang)}</div>
@@ -561,11 +594,12 @@ function WeekRow({week, myBooking, allBookings=[], gcalEvents=[], onBook, onRequ
         {hasMyBooking && myBooking.remarks && <div style={{fontSize:11,color:COLORS.muted,marginTop:2,fontStyle:'italic'}}>{'\u{1F4AC}'} {myBooking.remarks}</div>}
         {isPending && <div style={{fontSize:12,color:COLORS.warning,fontWeight:600,marginTop:2}}>{'\u23F3'} {t.pendingCancellation}</div>}
         {!hasMyBooking && reason && <div style={{fontSize:11,color:weekBookedByOther?COLORS.danger:'#B0A090',marginTop:2}}>{reason}</div>}
+        {!hasMyBooking && bookable && partialBlock && <div style={{fontSize:11,color:'#C4853B',marginTop:2}}>{'\u26A0\uFE0F'} {partialBlock.blockedCount}/{partialBlock.totalCount} {lang==='nl'?'dagen geboekt \u2014 kies aangepaste data':'days taken \u2014 pick custom dates'} ({formatDate(partialBlock.freeStart,lang)} \u2192 {formatDate(partialBlock.freeEnd,lang)})</div>}
       </div>
       <div style={{display:'flex',gap:6}}>
         {hasMyBooking && !isPending && <button onClick={()=>onRequestCancel(myBooking)} style={{padding:'6px 14px',background:'transparent',border:'1.5px solid #D4C5B5',borderRadius:8,fontSize:12,color:COLORS.muted,cursor:'pointer',fontWeight:500,fontFamily:"'DM Sans',sans-serif"}}>{t.requestCancel}</button>}
         {isPending && <span style={{fontSize:11,color:COLORS.warning,fontWeight:600}}>{'\u23F3'}</span>}
-        {!hasMyBooking && bookable && <button onClick={()=>onBook(week)} style={{padding:'6px 14px',background:COLORS.success,border:'none',borderRadius:8,fontSize:12,color:COLORS.white,cursor:'pointer',fontWeight:600,fontFamily:"'DM Sans',sans-serif"}}>{t.bookBtn}</button>}
+        {!hasMyBooking && bookable && <button onClick={()=>onBook(week, partialBlock)} style={{padding:'6px 14px',background:COLORS.success,border:'none',borderRadius:8,fontSize:12,color:COLORS.white,cursor:'pointer',fontWeight:600,fontFamily:"'DM Sans',sans-serif"}}>{t.bookBtn}</button>}
       </div>
     </div>
   );
@@ -574,7 +608,7 @@ function WeekRow({week, myBooking, allBookings=[], gcalEvents=[], onBook, onRequ
 // ═══════════════════════════════════════════════════════
 // BOOKING VIEW (main booking screen)
 // ═══════════════════════════════════════════════════════
-function BookingView({user, bookings=[], myBookings=[], weeks, year, setYear, phase, setPhase, phaseConfig, filterMonth, setFilterMonth, onSelectBranch, onShowAdmin, onBook, onRequestCancel, onSaveGuests, boardEvents=[], gcalEvents=[], gcalLoading=false, onSignUpBoard, onUnsignUpBoard, onCreateEvent, registeredUsers=[], branchData=[], showToast, t, lang}){
+function BookingView({user, bookings=[], myBookings=[], weeks, year, setYear, phase, setPhase, phaseConfig, filterMonth, setFilterMonth, onSelectBranch, onShowAdmin, onBook, onRequestCancel, onSaveGuests, boardEvents=[], gcalEvents=[], gcalLoading=false, onSignUpBoard, onUnsignUpBoard, onCreateEvent, registeredUsers=[], branchData=[], showToast, t, lang, pendingBookDate, clearPendingBookDate}){
   const [costBooking, setCostBooking] = React.useState(null);
   const [bookDialog, setBookDialog] = React.useState(null);
   // Inline "create special event" form state
@@ -596,6 +630,23 @@ function BookingView({user, bookings=[], myBookings=[], weeks, year, setYear, ph
   const clanBookedByBranch = bookings.find(b=>b.branch_id===user.branch_id && b.phase==='clan' && b.cancellation_status!=='approved');
   const userBookedPriority = bookings.find(b=>(b.user_id===user.id) && b.phase==='priority' && b.cancellation_status!=='approved');
   const filteredWeeks = filterMonth!==null ? weeks.filter(w=>w.month===filterMonth) : weeks;
+  // Highlight a target week when user clicks a date in the calendar.
+  const [highlightWeekId, setHighlightWeekId] = React.useState(null);
+  React.useEffect(()=>{
+    if(!pendingBookDate || !weeks.length) return;
+    const w = weeks.find(wk=>pendingBookDate>=wk.start && pendingBookDate<=wk.end);
+    if(!w){ if(clearPendingBookDate) clearPendingBookDate(); return; }
+    setFilterMonth(w.month);
+    setHighlightWeekId(w.id);
+    setBookDialog({week:w, phase:'regular', presetCheckIn:pendingBookDate});
+    setTimeout(()=>{
+      const el = document.querySelector('[data-week-id="'+w.id+'"]');
+      if(el && el.scrollIntoView) el.scrollIntoView({behavior:'smooth', block:'center'});
+    }, 50);
+    setTimeout(()=>setHighlightWeekId(null), 4000);
+    if(clearPendingBookDate) clearPendingBookDate();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[pendingBookDate, weeks.length]);
   const userBranch = FAMILY_BRANCHES.find(b=>b.id===user.branch_id);
   const branchCounts = {};
   (branchData||[]).forEach(br=>{branchCounts[br.id]=br.member_count||0;});
@@ -603,7 +654,7 @@ function BookingView({user, bookings=[], myBookings=[], weeks, year, setYear, ph
   return (
     <div className="fargny-booking-layout" style={{display:'flex',maxWidth:1200,margin:'0 auto',gap:24,padding:'24px 20px'}}>
       {costBooking && <CostCalculator booking={costBooking} weeks={weeks} onSave={(id,guests,total,includeCleaning)=>{onSaveGuests(id,guests,includeCleaning);setCostBooking(null);}} onClose={()=>setCostBooking(null)} t={t} lang={lang}/>}
-      {bookDialog && <BookingDialog week={bookDialog.week} phase={bookDialog.phase} user={user} registeredUsers={registeredUsers} onConfirm={opts=>{onBook(bookDialog.week,bookDialog.phase,opts);setBookDialog(null);}} onCancel={()=>setBookDialog(null)} t={t} lang={lang}/>}
+      {bookDialog && <BookingDialog week={bookDialog.week} phase={bookDialog.phase} presetCheckIn={bookDialog.presetCheckIn} presetCheckOut={bookDialog.presetCheckOut} user={user} registeredUsers={registeredUsers} onConfirm={opts=>{onBook(bookDialog.week,bookDialog.phase,opts);setBookDialog(null);}} onCancel={()=>setBookDialog(null)} t={t} lang={lang}/>}
 
       {/* SIDEBAR */}
       <div className="fargny-sidebar" style={{width:300,flexShrink:0,display:'flex',flexDirection:'column',gap:16}}>
@@ -635,21 +686,33 @@ function BookingView({user, bookings=[], myBookings=[], weeks, year, setYear, ph
         </div>
 
         <div style={{background:COLORS.white,borderRadius:14,padding:20,boxShadow:'0 1px 8px rgba(0,0,0,0.04)'}}>
-          <h3 style={{fontSize:11,fontWeight:700,color:COLORS.muted,textTransform:'uppercase',letterSpacing:'1px',margin:'0 0 12px 0'}}>{t.myBookings} ({myBookings.length})</h3>
-          {myBookings.length===0 ? <p style={{fontSize:13,color:'#B0A090',margin:0}}>{t.noBookingsYet}</p>
-          : <div style={{display:'flex',flexDirection:'column',gap:6}}>
-              {myBookings.map(b=>{
-                const bYear=b.year||year;const bWeeks=bYear===year?weeks:generateWeeks(bYear);const w=bWeeks.find(wk=>wk.id===b.week_id);if(!w) return null;
-                const isPending=b.cancellation_status==='pending';const pm=getPhaseMeta(b.phase,t);
-                return <div key={b.id} style={{padding:'8px 12px',background:isPending?'#FEF2F2':'#F8F5F2',borderRadius:8,borderLeft:'3px solid '+(isPending?COLORS.warning:b.open_to_share?COLORS.openToShare:(userBranch?userBranch.color:'#ccc')),opacity:isPending?0.7:1,cursor:isPending?'default':'pointer'}} onClick={isPending?null:()=>setCostBooking(b)}>
-                  <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-                    <div style={{fontSize:13,fontWeight:500,color:COLORS.text,textDecoration:isPending?'line-through':'none'}}>{bYear!==year?bYear+' \u00B7 ':''}{formatDate(b.check_in_date||w.start,lang)} &mdash; {formatDate(b.check_out_date||w.end,lang)}</div>
-                  </div>
-                  {isPending ? <div style={{fontSize:11,color:COLORS.warning,marginTop:2,fontWeight:600}}>{'\u23F3'} {t.pendingCancellation}</div>
-                  : <div style={{fontSize:11,color:COLORS.muted,marginTop:2}}>W{w.weekNum} &middot; {pm?pm.name:b.phase}{b.open_to_share?' \u00B7 \u{1F91D}':''}{b.admin_booked?' \u00B7 '+t.adminBooking:''}</div>}
-                </div>;
-              })}
-            </div>}
+          {(()=>{
+            const myEvents = (boardEvents||[]).filter(ev=>ev.user_signed_up);
+            const totalCount = myBookings.length + myEvents.length;
+            return <>
+              <h3 style={{fontSize:11,fontWeight:700,color:COLORS.muted,textTransform:'uppercase',letterSpacing:'1px',margin:'0 0 12px 0'}}>{t.myBookings} ({totalCount})</h3>
+              {totalCount===0 ? <p style={{fontSize:13,color:'#B0A090',margin:0}}>{t.noBookingsYet}</p>
+              : <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                  {myBookings.map(b=>{
+                    const bYear=b.year||year;const bWeeks=bYear===year?weeks:generateWeeks(bYear);const w=bWeeks.find(wk=>wk.id===b.week_id);if(!w) return null;
+                    const isPending=b.cancellation_status==='pending';const pm=getPhaseMeta(b.phase,t);
+                    return <div key={'b'+b.id} style={{padding:'8px 12px',background:isPending?'#FEF2F2':'#F8F5F2',borderRadius:8,borderLeft:'3px solid '+(isPending?COLORS.warning:b.open_to_share?COLORS.openToShare:(userBranch?userBranch.color:'#ccc')),opacity:isPending?0.7:1,cursor:isPending?'default':'pointer'}} onClick={isPending?null:()=>setCostBooking(b)}>
+                      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                        <div style={{fontSize:13,fontWeight:500,color:COLORS.text,textDecoration:isPending?'line-through':'none'}}>{bYear!==year?bYear+' \u00B7 ':''}{formatDate(b.check_in_date||w.start,lang)} &mdash; {formatDate(b.check_out_date||w.end,lang)}</div>
+                      </div>
+                      {isPending ? <div style={{fontSize:11,color:COLORS.warning,marginTop:2,fontWeight:600}}>{'\u23F3'} {t.pendingCancellation}</div>
+                      : <div style={{fontSize:11,color:COLORS.muted,marginTop:2}}>W{w.weekNum} &middot; {pm?pm.name:b.phase}{b.open_to_share?' \u00B7 \u{1F91D}':''}{b.admin_booked?' \u00B7 '+t.adminBooking:''}</div>}
+                    </div>;
+                  })}
+                  {myEvents.map(ev=>(
+                    <div key={'e'+ev.id} onClick={()=>{setPhase('board');setEventDetail(ev);}} style={{padding:'8px 12px',background:'#F8F5F2',borderRadius:8,borderLeft:'3px solid '+COLORS.board,cursor:'pointer'}}>
+                      <div style={{fontSize:13,fontWeight:500,color:COLORS.text}}>{formatDate(ev.start_date,lang)} &mdash; {formatDate(ev.end_date,lang)}</div>
+                      <div style={{fontSize:11,color:COLORS.board,marginTop:2,fontWeight:600}}>{'\u2728'} {lang==='nl'?'Speciaal Evenement':'Special Event'} &middot; {ev.name}</div>
+                    </div>
+                  ))}
+                </div>}
+            </>;
+          })()}
         </div>
 
         <div style={{background:COLORS.white,borderRadius:14,padding:20,boxShadow:'0 1px 8px rgba(0,0,0,0.04)'}}>
@@ -749,7 +812,7 @@ function BookingView({user, bookings=[], myBookings=[], weeks, year, setYear, ph
             : filteredWeeks.reduce((acc,week,i)=>{
                 const prevMonth = i>0 ? filteredWeeks[i-1].month : -1;
                 if(week.month!==prevMonth) acc.push(<div key={'month-'+week.month} style={{padding:'14px 16px 6px 16px',fontSize:13,fontWeight:700,color:COLORS.muted,textTransform:'uppercase',letterSpacing:'0.5px',borderTop:i>0?'1px solid #F0EBE5':'none',marginTop:i>0?4:0}}>{MONTHS_SHORT[lang][week.month]} {year}</div>);
-                acc.push(<WeekRow key={week.id} week={week} myBooking={myBookingMap[week.id]} allBookings={bookings} gcalEvents={gcalEvents} onBook={w=>setBookDialog({week:w,phase})} onRequestCancel={onRequestCancel} user={user} phase={phase} clanBookedByBranch={clanBookedByBranch} userBookedPriority={userBookedPriority} phaseActive={getPhaseStatus(phase,phaseConfig)==='active'||user.is_admin} t={t} lang={lang}/>);
+                acc.push(<WeekRow key={week.id} week={week} myBooking={myBookingMap[week.id]} allBookings={bookings} gcalEvents={gcalEvents} onBook={(w,partial)=>setBookDialog({week:w,phase,presetCheckIn:partial?partial.freeStart:null,presetCheckOut:partial?partial.freeEnd:null})} onRequestCancel={onRequestCancel} user={user} phase={phase} clanBookedByBranch={clanBookedByBranch} userBookedPriority={userBookedPriority} phaseActive={getPhaseStatus(phase,phaseConfig)==='active'||user.is_admin} t={t} lang={lang} highlight={highlightWeekId===week.id}/>);
                 return acc;
               },[])}
           </div>
@@ -762,9 +825,7 @@ function BookingView({user, bookings=[], myBookings=[], weeks, year, setYear, ph
 // ═══════════════════════════════════════════════════════
 // CALENDAR VIEW
 // ═══════════════════════════════════════════════════════
-function CalendarView({bookings=[], weeks, year, boardEvents=[], gcalEvents=[], clanRevealed, priorityRevealed, registeredUsers=[], user, t, lang}){
-  const [calMonth, setCalMonth] = React.useState(()=>new Date().getMonth());
-  const [calYear, setCalYear] = React.useState(()=>year);
+function CalendarView({bookings=[], weeks, year, boardEvents=[], gcalEvents=[], clanRevealed, priorityRevealed, registeredUsers=[], user, t, lang, calMonth, setCalMonth, calYear, setCalYear, onPickDate}){
   const [popup, setPopup] = React.useState(null);
   const today = toISO(new Date());
   const someHidden = !clanRevealed || !priorityRevealed;
@@ -810,8 +871,11 @@ function CalendarView({bookings=[], weeks, year, boardEvents=[], gcalEvents=[], 
             {row.map((day,ci)=>{
               if(!day) return <div key={'e'+ci} style={{minHeight:64}}/>;
               const bks = dayBookings[day]||[];
-              const isToday = (calYear+'-'+String(calMonth+1).padStart(2,'0')+'-'+String(day).padStart(2,'0'))===today;
-              return <div key={day} style={{minHeight:64,padding:'3px 2px',position:'relative',border:isToday?'2px solid '+COLORS.accent:'2px solid transparent',borderRadius:6}}>
+              const ds = calYear+'-'+String(calMonth+1).padStart(2,'0')+'-'+String(day).padStart(2,'0');
+              const isToday = ds===today;
+              const isFree = bks.length===0;
+              const cellClickable = isFree && onPickDate && ds>=today;
+              return <div key={day} onClick={cellClickable?()=>onPickDate(ds):null} style={{minHeight:64,padding:'3px 2px',position:'relative',border:isToday?'2px solid '+COLORS.accent:'2px solid transparent',borderRadius:6,cursor:cellClickable?'pointer':'default',background:cellClickable?'transparent':undefined}} onMouseEnter={cellClickable?(e)=>{e.currentTarget.style.background=COLORS.success+'14';}:null} onMouseLeave={cellClickable?(e)=>{e.currentTarget.style.background='transparent';}:null}>
                 <div style={{fontSize:12,fontWeight:isToday?700:400,color:COLORS.text,textAlign:'center',marginBottom:2}}>{day}</div>
                 {bks.slice(0,3).map((item,bi)=>{
                   const isBoard = item.type==='board';
@@ -1178,6 +1242,12 @@ function App(){
   const [gcalEvents, setGcalEvents] = React.useState([]);
   const [gcalLoading, setGcalLoading] = React.useState(true);
   const [authChecked, setAuthChecked] = React.useState(false);
+  // Calendar view month/year persists across tab switches (reset only on full reload/login).
+  const [calMonth, setCalMonth] = React.useState(()=>new Date().getMonth());
+  const [calYear, setCalYear] = React.useState(()=>2026);
+  // When clicking a date in the calendar we hand the target ISO date to BookingView
+  // so it can scroll to and highlight that week.
+  const [pendingBookDate, setPendingBookDate] = React.useState(null);
 
   const t = T[lang]||T.en;
   const showToast = (msg)=>{setToast(msg);setTimeout(()=>setToast(null),3500);};
@@ -1368,8 +1438,8 @@ function App(){
         </div>
       </div>
 
-      {view==='book' && <BookingView user={user} bookings={bookings} myBookings={myBookings} weeks={weeks} year={year} setYear={y=>{setYear(y);setFilterMonth(null);}} phase={phase} setPhase={setPhase} phaseConfig={phaseConfig} filterMonth={filterMonth} setFilterMonth={setFilterMonth} onSelectBranch={setSelectedBranch} onShowAdmin={()=>setShowAdmin(true)} onBook={handleBook} onRequestCancel={handleRequestCancel} onSaveGuests={handleSaveGuests} boardEvents={boardEvents} gcalEvents={gcalEvents} gcalLoading={gcalLoading} onSignUpBoard={handleSignUpBoard} onUnsignUpBoard={handleUnsignUpBoard} onCreateEvent={handleCreateBoardEvent} registeredUsers={registeredUsers} branchData={branchData} showToast={showToast} t={t} lang={lang}/>}
-      {view==='calendar' && <CalendarView bookings={calendarData.bookings||[]} weeks={calendarData.weeks||weeks} year={year} boardEvents={boardEvents} gcalEvents={gcalEvents} clanRevealed={calendarData.clan_revealed!==false} priorityRevealed={calendarData.priority_revealed!==false} registeredUsers={registeredUsers} user={user} t={t} lang={lang}/>}
+      {view==='book' && <BookingView user={user} bookings={bookings} myBookings={myBookings} weeks={weeks} year={year} setYear={y=>{setYear(y);setFilterMonth(null);}} phase={phase} setPhase={setPhase} phaseConfig={phaseConfig} filterMonth={filterMonth} setFilterMonth={setFilterMonth} onSelectBranch={setSelectedBranch} onShowAdmin={()=>setShowAdmin(true)} onBook={handleBook} onRequestCancel={handleRequestCancel} onSaveGuests={handleSaveGuests} boardEvents={boardEvents} gcalEvents={gcalEvents} gcalLoading={gcalLoading} onSignUpBoard={handleSignUpBoard} onUnsignUpBoard={handleUnsignUpBoard} onCreateEvent={handleCreateBoardEvent} registeredUsers={registeredUsers} branchData={branchData} showToast={showToast} t={t} lang={lang} pendingBookDate={pendingBookDate} clearPendingBookDate={()=>setPendingBookDate(null)}/>}
+      {view==='calendar' && <CalendarView bookings={(calendarData.bookings&&calendarData.bookings.length)?calendarData.bookings:bookings} weeks={calendarData.weeks||weeks} year={year} boardEvents={boardEvents} gcalEvents={gcalEvents} clanRevealed={calendarData.clan_revealed!==false} priorityRevealed={calendarData.priority_revealed!==false} registeredUsers={registeredUsers} user={user} t={t} lang={lang} calMonth={calMonth} setCalMonth={setCalMonth} calYear={calYear} setCalYear={setCalYear} onPickDate={(ds)=>{setPendingBookDate(ds);setPhase('regular');setView('book');}}/>}
       {view==='feedback' && <FeedbackView t={t} lang={lang}/>}
       {view==='admin' && user.is_admin && <AdminTab bookings={bookings} weeks={weeks} registeredUsers={registeredUsers} user={user} year={year} onApproveCancellation={handleApproveCancellation} onRejectCancellation={handleRejectCancellation} onToggleAdmin={handleToggleAdmin} t={t} lang={lang}/>}
       <WhatsAppButton t={t}/>
