@@ -885,7 +885,7 @@ function CalendarView({bookings=[], weeks, year, boardEvents=[], gcalEvents=[], 
                   let barColor, label, isPending=false;
                   if(isBoard){barColor=COLORS.board;label=b.name;}
                   else if(isGcal){barColor='#9CA3AF';label=b.title;}
-                  else{const br=FAMILY_BRANCHES.find(x=>x.id===b.branch_id);isPending=b.cancellation_status==='pending';barColor=b.open_to_share?COLORS.openToShare:isPending?(br?br.color:'#ccc')+'40':(br?br.color:'#ccc');label=shortName(b.user_name)+(b.open_to_share?' \u{1F91D}':'');}
+                  else{const br=FAMILY_BRANCHES.find(x=>x.id===b.branch_id);isPending=b.cancellation_status==='pending';if(b.is_hidden){barColor='#A89888';label='\u{1F512}';}else{barColor=b.open_to_share?COLORS.openToShare:isPending?(br?br.color:'#ccc')+'40':(br?br.color:'#ccc');label=shortName(b.user_name)+(b.open_to_share?' \u{1F91D}':'');}}
                   const prevDay=ci>0?row[ci-1]:null;const nextDay=ci<6?row[ci+1]:null;
                   const keyFor = x=>x.type==='board'?'board_'+x.data.id:x.type==='gcal'?('gcal_'+(x.data._key||x.data.uid||x.data.title+x.start)):x.data.id;
                   const itemId = keyFor(item);
@@ -917,6 +917,12 @@ function CalendarView({bookings=[], weeks, year, boardEvents=[], gcalEvents=[], 
             <div style={{fontSize:13,color:COLORS.text}}>{formatDate(popup.data.start_date,lang)} &ndash; {formatDate(popup.data.end_date,lang)}</div>
             {popup.data.description && <div style={{fontSize:13,color:COLORS.muted,marginTop:6,fontStyle:'italic',whiteSpace:'pre-wrap'}}>{popup.data.description}</div>}
             <div style={{fontSize:11,color:COLORS.muted,marginTop:10,padding:'6px 10px',background:'#F3F4F6',borderRadius:6,display:'inline-block'}}>{'\u{1F4C5}'} {t.viaOldCalendar}</div>
+          </> : popup.data.is_hidden ? <>
+            <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:12}}>
+              <div style={{width:12,height:12,borderRadius:3,background:'#A89888'}}/>
+              <h4 style={{fontSize:16,fontWeight:700,color:COLORS.text,margin:0}}>{'\u{1F512}'} {lang==='nl'?'Verborgen boeking':'Hidden booking'}</h4>
+            </div>
+            <div style={{fontSize:13,color:COLORS.muted}}>{lang==='nl'?'Deze week is geboekt. Details worden onthuld op de openbaardatum.':'This week is booked. Details will be revealed on the reveal date.'}</div>
           </> : <>
             <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:12}}>
               <div style={{width:12,height:12,borderRadius:3,background:popup.data.open_to_share?COLORS.openToShare:(FAMILY_BRANCHES.find(x=>x.id===popup.data.branch_id)||{color:'#ccc'}).color}}/>
@@ -1413,6 +1419,7 @@ function App(){
   const totalBooked = bookings.filter(b=>b.cancellation_status!=='approved').length;
   const pendingCount = bookings.filter(b=>b.cancellation_status==='pending').length;
   const navItems = [{id:'book',label:t.book,emoji:'\u{1F4DD}'},{id:'calendar',label:t.calendar,emoji:'\u{1F4C5}'},{id:'feedback',label:t.feedback,emoji:'\u{1F4CB}'}];
+  if(user.is_admin) navItems.push({id:'statistics',label:t.statistics,emoji:'\u{1F4CA}'});
   if(user.is_admin) navItems.push({id:'admin',label:t.adminTab,emoji:'\u{1F511}'});
   const branchMembers = selectedBranch ? (branchData.find(b=>b.id===selectedBranch.id)||{}).members||[] : [];
 
@@ -1442,6 +1449,7 @@ function App(){
       {view==='book' && <BookingView user={user} bookings={bookings} myBookings={myBookings} weeks={weeks} year={year} setYear={y=>{setYear(y);setFilterMonth(null);}} phase={phase} setPhase={setPhase} phaseConfig={phaseConfig} filterMonth={filterMonth} setFilterMonth={setFilterMonth} onSelectBranch={setSelectedBranch} onShowAdmin={()=>setShowAdmin(true)} onBook={handleBook} onRequestCancel={handleRequestCancel} onSaveGuests={handleSaveGuests} boardEvents={boardEvents} gcalEvents={gcalEvents} gcalLoading={gcalLoading} onSignUpBoard={handleSignUpBoard} onUnsignUpBoard={handleUnsignUpBoard} onCreateEvent={handleCreateBoardEvent} registeredUsers={registeredUsers} branchData={branchData} showToast={showToast} t={t} lang={lang} pendingBookDate={pendingBookDate} clearPendingBookDate={()=>setPendingBookDate(null)}/>}
       {view==='calendar' && <CalendarView bookings={(calendarData.bookings&&calendarData.bookings.length)?calendarData.bookings:bookings} weeks={calendarData.weeks||weeks} year={year} boardEvents={boardEvents} gcalEvents={gcalEvents} clanRevealed={calendarData.clan_revealed!==false} priorityRevealed={calendarData.priority_revealed!==false} registeredUsers={registeredUsers} user={user} t={t} lang={lang} calMonth={calMonth} setCalMonth={setCalMonth} calYear={calYear} setCalYear={setCalYear} onPickDate={(ds)=>{setPendingBookDate(ds);setPhase('regular');setView('book');}}/>}
       {view==='feedback' && <FeedbackView t={t} lang={lang}/>}
+      {view==='statistics' && user.is_admin && <StatisticsView user={user} year={year} t={t} lang={lang}/>}
       {view==='admin' && user.is_admin && <AdminTab bookings={bookings} weeks={weeks} registeredUsers={registeredUsers} user={user} year={year} onApproveCancellation={handleApproveCancellation} onRejectCancellation={handleRejectCancellation} onToggleAdmin={handleToggleAdmin} t={t} lang={lang}/>}
       <WhatsAppButton t={t}/>
     </div>

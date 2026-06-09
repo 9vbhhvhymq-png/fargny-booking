@@ -94,8 +94,8 @@ function auth_register() {
     if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
         json_error('Invalid email address');
     }
-    if (strlen($password) < 3) {
-        json_error('Password too short');
+    if (strlen($password) < 8) {
+        json_error('Password must be at least 8 characters');
     }
 
     $db = get_db();

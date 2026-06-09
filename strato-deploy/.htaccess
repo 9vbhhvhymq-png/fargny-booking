@@ -1,0 +1,17 @@
+# Fargny Booking — root booking directory
+# Block direct web access to sensitive files.
+
+# Block .env files (credentials must never be downloadable)
+<FilesMatch "^\.env(\.example)?$">
+    Order Allow,Deny
+    Deny from all
+</FilesMatch>
+
+# Block raw SQL migration files
+<FilesMatch "\.sql$">
+    Order Allow,Deny
+    Deny from all
+</FilesMatch>
+
+# Prevent directory listing
+Options -Indexes
