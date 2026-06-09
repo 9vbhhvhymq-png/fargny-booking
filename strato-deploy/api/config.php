@@ -217,12 +217,24 @@ function generate_weeks(int $year): array {
 // ---- Seed admin on first run ----
 function seed_admin_if_needed() {
     $db = get_db();
-    $stmt = $db->prepare("SELECT id FROM fargny_users WHERE email = ? LIMIT 1");
-    $stmt->execute(['admin@fargny.org']);
-    if (!$stmt->fetch()) {
+    // Check by the canonical admin email; also handle old admin@fargny.org seed
+    $stmt = $db->prepare("SELECT id FROM fargny_users WHERE email IN ('moritz@fromageot.eu','admin@fargny.org') LIMIT 1");
+    $stmt->execute();
+    $existing = $stmt->fetch();
+    if (!$existing) {
         $hash = password_hash('admin', PASSWORD_BCRYPT);
         $db->prepare("INSERT INTO fargny_users (display_name, email, password_hash, branch_id, is_admin) VALUES (?, ?, ?, ?, ?)")
-           ->execute(['Admin', 'admin@fargny.org', $hash, 1, 1]);
+           ->execute(['Moritz Fromageot', 'moritz@fromageot.eu', $hash, 9, 1]);
+    } else {
+        // Migrate old admin seed to correct identity if needed
+        $db->prepare("
+            UPDATE fargny_users
+            SET display_name = 'Moritz Fromageot',
+                email        = 'moritz@fromageot.eu',
+                branch_id    = 9,
+                is_admin     = 1
+            WHERE id = ? AND email = 'admin@fargny.org'
+        ")->execute([$existing['id']]);
     }
 }
 

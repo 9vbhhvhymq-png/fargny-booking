@@ -47,13 +47,8 @@ CREATE TABLE IF NOT EXISTS `fargny_users` (
   CONSTRAINT `fk_users_branch` FOREIGN KEY (`branch_id`) REFERENCES `fargny_branches` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- Admin seed: email admin@fargny.org, password "admin"
-INSERT INTO `fargny_users` (`id`, `display_name`, `email`, `password_hash`, `branch_id`, `is_admin`)
-VALUES (1, 'Admin', 'admin@fargny.org', '$2y$10$8KzQ1Z5z5z5z5z5z5z5z5eY2J9QxW3Y5Z5z5z5z5z5z5z5z5z5z5.', 1, 1)
-ON DUPLICATE KEY UPDATE `id`=`id`;
--- NOTE: Replace the hash above after first deploy by running:
---   UPDATE fargny_users SET password_hash = '$2y$10$...' WHERE id = 1;
--- Or let the install script generate it. The API config.php seeds this properly.
+-- Admin is seeded at runtime by seed_admin_if_needed() in config.php.
+-- email: moritz@fromageot.eu, branch_id: 9 (Bertrand), is_admin: 1
 
 -- -----------------------------------------------------------
 -- 3. SHAREHOLDERS (pre-seeded list of eligible registrants)
@@ -177,7 +172,7 @@ INSERT INTO `fargny_shareholders` (`full_name`, `branch_id`) VALUES
   ('Fritz (1996)', 9),
   ('Laurenz (2000)', 9),
   ('Matthias Fromageot', 9),
-  ('Moritz (1992)', 9)
+  ('Moritz Fromageot', 9)
 ON DUPLICATE KEY UPDATE `full_name`=VALUES(`full_name`);
 
 -- -----------------------------------------------------------

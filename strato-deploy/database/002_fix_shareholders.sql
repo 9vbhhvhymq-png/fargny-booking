@@ -123,7 +123,7 @@ INSERT INTO `fargny_shareholders` (`full_name`, `branch_id`) VALUES
   ('Fritz (1996)', 9),
   ('Laurenz (2000)', 9),
   ('Matthias Fromageot', 9),
-  ('Moritz (1992)', 9);
+  ('Moritz Fromageot', 9);
 
 -- Re-link any existing user accounts to the new shareholder rows by name
 UPDATE `fargny_users` u
