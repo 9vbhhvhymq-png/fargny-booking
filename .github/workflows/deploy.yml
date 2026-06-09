@@ -4,13 +4,9 @@ name: Deploy to Strato
 # whenever changes are pushed to main.
 #
 # Required GitHub Secrets:
-#   FTP_HOST     — e.g. 512020809.ssh.w1.strato.hosting
-#   FTP_USER     — e.g. STU834724242
-#   FTP_PASSWORD — your Strato SFTP password
-#
-# The contents of strato-deploy/ are uploaded to the /booking/ directory
-# on the server using lftp (pure SFTP — no remote rsync needed).
-# (trigger: re-run after password reset)
+#   FTP_HOST  — e.g. 512020809.ssh.w1.strato.hosting
+#   FTP_USER  — e.g. STU834724242
+#   FTP_PASS  — your Strato SFTP password
 
 on:
   push:
@@ -37,25 +33,22 @@ jobs:
         env:
           SFTP_HOST: ${{ secrets.FTP_HOST }}
           SFTP_USER: ${{ secrets.FTP_USER }}
-          # lftp reads the password from this env var when --env-password is set.
-          # This avoids any shell escaping issues with special characters.
-          LFTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          LFTP_PASSWORD: ${{ secrets.FTP_PASS }}
         run: |
-          # Strip any accidental whitespace/newlines from host + user
           HOST="$(printf '%s' "$SFTP_HOST" | tr -d '[:space:]')"
           USER_="$(printf '%s' "$SFTP_USER" | tr -d '[:space:]')"
 
-          lftp --env-password -u "$USER_" "sftp://$HOST" <<EOF
+          lftp --env-password -u "$USER_" "sftp://$HOST" <<'LFTP_EOF'
           set sftp:auto-confirm yes
           set net:timeout 20
           set net:max-retries 2
           set net:reconnect-interval-base 5
           mirror --reverse \
                  --verbose \
-                 --delete \
-                 --exclude-glob .git* \
                  --exclude-glob .env \
+                 --exclude-glob wipe-*.php \
+                 --exclude-glob .git* \
                  --exclude-glob node_modules/ \
                  ./strato-deploy/ /STRATO-apps/wordpress_01/app/booking/
           bye
-          EOF
+          LFTP_EOF
