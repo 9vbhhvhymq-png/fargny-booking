@@ -1,0 +1,28 @@
+name: Deploy to Strato
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'strato-deploy/**'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy via SFTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          protocol: sftp
+          server: ${{ secrets.FTP_HOST }}
+          port: 22
+          username: ${{ secrets.FTP_USER }}
+          password: ${{ secrets.FTP_PASS }}
+          local-dir: ./strato-deploy/
+          server-dir: /STRATO-apps/wordpress_01/app/booking/
+          exclude: |
+            **/.env
+            **/wipe-*.php
