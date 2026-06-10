@@ -7,6 +7,7 @@ name: Deploy to Strato
 #   FTP_HOST  — e.g. 512020809.ssh.w1.strato.hosting
 #   FTP_USER  — e.g. STU834724242
 #   FTP_PASSWORD  — your Strato SFTP password
+# Re-trigger deploy.
 
 on:
   push:
