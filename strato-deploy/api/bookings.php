@@ -323,12 +323,12 @@ function bookings_calendar() {
 
     $visible = [];
     foreach ($all as $b) {
-        // Always show user's own bookings
+        // Always show user's own bookings in full
         if ((int)$b['user_id'] === (int)$user['id']) {
             $visible[] = format_booking($b);
             continue;
         }
-        // Admin sees everything
+        // Admin sees everything unredacted
         if ($user['is_admin']) {
             $visible[] = format_booking($b);
             continue;
@@ -338,14 +338,35 @@ function bookings_calendar() {
             $visible[] = format_booking($b);
             continue;
         }
-        // Clan: only after reveal
-        if ($b['phase'] === 'clan' && $clanRevealed) {
-            $visible[] = format_booking($b);
+        // Clan: fully visible after reveal; anonymised before reveal so the
+        // calendar and booking tab agree that the week is taken.
+        if ($b['phase'] === 'clan') {
+            if ($clanRevealed) {
+                $visible[] = format_booking($b);
+            } else {
+                $anon = format_booking($b);
+                $anon['user_name']   = '';
+                $anon['user_email']  = '';
+                $anon['branch_id']   = 0;
+                $anon['branch_name'] = '';
+                $anon['is_hidden']   = true;
+                $visible[] = $anon;
+            }
             continue;
         }
-        // Priority: only after reveal
-        if ($b['phase'] === 'priority' && $priorityRevealed) {
-            $visible[] = format_booking($b);
+        // Priority: same reveal logic
+        if ($b['phase'] === 'priority') {
+            if ($priorityRevealed) {
+                $visible[] = format_booking($b);
+            } else {
+                $anon = format_booking($b);
+                $anon['user_name']   = '';
+                $anon['user_email']  = '';
+                $anon['branch_id']   = 0;
+                $anon['branch_name'] = '';
+                $anon['is_hidden']   = true;
+                $visible[] = $anon;
+            }
             continue;
         }
     }

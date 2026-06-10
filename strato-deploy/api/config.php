@@ -217,24 +217,62 @@ function generate_weeks(int $year): array {
 // ---- Seed admin on first run ----
 function seed_admin_if_needed() {
     $db = get_db();
-    // Check by the canonical admin email; also handle old admin@fargny.org seed
-    $stmt = $db->prepare("SELECT id FROM fargny_users WHERE email IN ('moritz@fromageot.eu','admin@fargny.org') LIMIT 1");
+
+    // 1. Ensure 'Moritz Fromageot' exists in fargny_shareholders (branch 9 = Bertrand).
+    //    Rename the legacy 'Moritz (1992)' entry if present; insert otherwise.
+    $shStmt = $db->prepare("SELECT id, user_id FROM fargny_shareholders WHERE full_name = 'Moritz Fromageot' LIMIT 1");
+    $shStmt->execute();
+    $shRow = $shStmt->fetch();
+
+    if (!$shRow) {
+        $oldStmt = $db->prepare("SELECT id FROM fargny_shareholders WHERE full_name = 'Moritz (1992)' LIMIT 1");
+        $oldStmt->execute();
+        $oldRow = $oldStmt->fetch();
+        if ($oldRow) {
+            $db->prepare("UPDATE fargny_shareholders SET full_name = 'Moritz Fromageot', branch_id = 9 WHERE id = ?")
+               ->execute([$oldRow['id']]);
+            $shId = (int)$oldRow['id'];
+        } else {
+            $db->prepare("INSERT INTO fargny_shareholders (full_name, branch_id) VALUES ('Moritz Fromageot', 9)")
+               ->execute();
+            $shId = (int)$db->lastInsertId();
+        }
+        $shUserId = null;
+    } else {
+        $shId     = (int)$shRow['id'];
+        $shUserId = $shRow['user_id'] ? (int)$shRow['user_id'] : null;
+        $db->prepare("UPDATE fargny_shareholders SET branch_id = 9 WHERE id = ? AND branch_id != 9")
+           ->execute([$shId]);
+    }
+
+    // 2. Ensure admin user exists as moritz@fromageot.eu (also handles old admin@fargny.org seed).
+    $stmt = $db->prepare("SELECT id, email FROM fargny_users WHERE email IN ('moritz@fromageot.eu','admin@fargny.org') LIMIT 1");
     $stmt->execute();
     $existing = $stmt->fetch();
+
     if (!$existing) {
         $hash = password_hash('admin', PASSWORD_BCRYPT);
         $db->prepare("INSERT INTO fargny_users (display_name, email, password_hash, branch_id, is_admin) VALUES (?, ?, ?, ?, ?)")
            ->execute(['Moritz Fromageot', 'moritz@fromageot.eu', $hash, 9, 1]);
+        $userId = (int)$db->lastInsertId();
     } else {
-        // Migrate old admin seed to correct identity if needed
+        $userId = (int)$existing['id'];
+        // Migrate old admin@fargny.org identity and always ensure is_admin=1
         $db->prepare("
             UPDATE fargny_users
             SET display_name = 'Moritz Fromageot',
                 email        = 'moritz@fromageot.eu',
                 branch_id    = 9,
                 is_admin     = 1
-            WHERE id = ? AND email = 'admin@fargny.org'
-        ")->execute([$existing['id']]);
+            WHERE id = ?
+              AND (email = 'admin@fargny.org' OR is_admin != 1 OR branch_id != 9)
+        ")->execute([$userId]);
+    }
+
+    // 3. Link the shareholder row to the admin user if not already done.
+    if ($shUserId !== $userId) {
+        $db->prepare("UPDATE fargny_shareholders SET user_id = ? WHERE id = ?")
+           ->execute([$userId, $shId]);
     }
 }
 
