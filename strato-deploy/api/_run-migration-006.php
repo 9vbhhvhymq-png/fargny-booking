@@ -4,7 +4,7 @@
 require_once __DIR__ . '/config.php';
 
 $key = $_GET['key'] ?? '';
-if ($key !== env('APP_SECRET', '')) {
+if (!$key || $key !== env('APP_SECRET', '')) {
     http_response_code(403);
     echo "Forbidden";
     exit;

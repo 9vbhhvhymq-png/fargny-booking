@@ -68,6 +68,39 @@ function bookings_list() {
     $stmt->execute([$year]);
     $all = $stmt->fetchAll();
 
+    // Blind booking: before the reveal date, other users' clan/priority
+    // bookings must not expose who booked. The week still shows as taken
+    // (so blocking stays consistent with the calendar) but identity is
+    // stripped. Own bookings and admins always see full details. For clan
+    // bookings the requester's own branch stays visible so the "your branch
+    // already booked" warning keeps working.
+    $cfgStmt = $db->prepare("SELECT * FROM fargny_phase_config WHERE year = ? LIMIT 1");
+    $cfgStmt->execute([$year]);
+    $cfg = $cfgStmt->fetch();
+    $today = date('Y-m-d');
+    $clanRevealed     = $cfg ? ($today >= $cfg['clan_reveal']) : true;
+    $priorityRevealed = $cfg ? ($today >= $cfg['priority_reveal']) : true;
+
+    $anonymize = function (array $b) use ($user, $clanRevealed, $priorityRevealed): array {
+        $fmt = format_booking($b);
+        if ($user['is_admin'] || (int)$b['user_id'] === (int)$user['id']) return $fmt;
+        $hidden = ($b['phase'] === 'clan' && !$clanRevealed)
+               || ($b['phase'] === 'priority' && !$priorityRevealed);
+        if (!$hidden) return $fmt;
+        $fmt['user_id']         = 0;
+        $fmt['user_name']       = '';
+        $fmt['user_email']      = '';
+        $fmt['remarks']         = '';
+        $fmt['linked_user_ids'] = [];
+        $fmt['is_hidden']       = true;
+        $ownBranchClan = ($b['phase'] === 'clan' && (int)$b['branch_id'] === (int)$user['branch_id']);
+        if (!$ownBranchClan) {
+            $fmt['branch_id']   = 0;
+            $fmt['branch_name'] = '';
+        }
+        return $fmt;
+    };
+
     // Also get ALL bookings for current user (across years) for My Bookings sidebar
     $stmtMy = $db->prepare("
         SELECT b.*, u.display_name, u.email, br.name AS branch_name,
@@ -84,7 +117,7 @@ function bookings_list() {
     $myAll = $stmtMy->fetchAll();
 
     json_success([
-        'bookings'    => array_map('format_booking', $all),
+        'bookings'    => array_map($anonymize, $all),
         'my_bookings' => array_map('format_booking', $myAll),
         'weeks'       => generate_weeks($year),
     ]);
@@ -181,19 +214,37 @@ function bookings_create() {
         $rangeStart = $checkIn ?: ($week['start'] ?? null);
         $rangeEnd   = $checkOut ?: ($week['end'] ?? null);
 
-        // Reject if the chosen range overlaps with another Fargny booking
+        // Reject if the chosen range overlaps with another Fargny booking.
+        // Bookings stored without explicit check-in/out dates occupy their
+        // full week, so resolve effective dates from the week id in PHP —
+        // a NULL-date fallback inside the SQL would match every booking.
         if ($rangeStart && $rangeEnd) {
             $stmt = $db->prepare("
-                SELECT b.id FROM fargny_bookings b
-                WHERE b.cancellation_status NOT IN ('approved')
-                  AND COALESCE(b.check_in_date, ?) <= ?
-                  AND COALESCE(b.check_out_date, ?) >= ?
-                LIMIT 1
+                SELECT week_id, year, check_in_date, check_out_date
+                FROM fargny_bookings
+                WHERE cancellation_status NOT IN ('approved')
             ");
-            // params: (week.start fallback for incoming check_in vs. our rangeEnd),
-            //         (week.end fallback for incoming check_out vs. our rangeStart)
-            $stmt->execute([$rangeStart, $rangeEnd, $rangeEnd, $rangeStart]);
-            if ($stmt->fetch()) json_error('These dates overlap with an existing booking');
+            $stmt->execute();
+            $weeksByYear = [];
+            foreach ($stmt->fetchAll() as $ex) {
+                $es = $ex['check_in_date'];
+                $ee = $ex['check_out_date'];
+                if (!$es || !$ee) {
+                    $exYear = (int)$ex['year'];
+                    if (!isset($weeksByYear[$exYear])) $weeksByYear[$exYear] = generate_weeks($exYear);
+                    foreach ($weeksByYear[$exYear] as $w2) {
+                        if ($w2['id'] === $ex['week_id']) {
+                            if (!$es) $es = $w2['start'];
+                            if (!$ee) $ee = $w2['end'];
+                            break;
+                        }
+                    }
+                }
+                if (!$es || !$ee) continue;
+                if ($es <= $rangeEnd && $ee >= $rangeStart) {
+                    json_error('These dates overlap with an existing booking');
+                }
+            }
         } else {
             // Fallback: same-week-id check
             $stmt = $db->prepare("SELECT id FROM fargny_bookings WHERE week_id = ? AND cancellation_status NOT IN ('approved') LIMIT 1");

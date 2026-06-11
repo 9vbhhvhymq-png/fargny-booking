@@ -7,12 +7,14 @@
 //
 // Usage:
 //   Preview (shows counts, no changes):
-//     GET /api/wipe-test-data.php?key=APP_SECRET
+//     GET /api/wipe-test-data.php?key=wipe-fargny-2026
 //
 //   Execute (wipes everything and re-seeds admin):
-//     GET /api/wipe-test-data.php?key=APP_SECRET&confirm=yes
+//     GET /api/wipe-test-data.php?key=wipe-fargny-2026&confirm=yes
 //
-// Protected by APP_SECRET — keep that value secret.
+// Accepts ?key=wipe-fargny-2026 or the APP_SECRET from .env.
+// This file is never auto-deployed; upload manually when needed
+// and delete it from the server afterwards.
 // ============================================================
 
 require_once __DIR__ . '/config.php';
@@ -20,9 +22,10 @@ require_once __DIR__ . '/config.php';
 header('Content-Type: text/plain; charset=UTF-8');
 
 $key = $_GET['key'] ?? '';
-if (!$key || $key !== env('APP_SECRET', '')) {
+$validKeys = array_filter(['wipe-fargny-2026', env('APP_SECRET', '')]);
+if (!$key || !in_array($key, $validKeys, true)) {
     http_response_code(403);
-    echo "403 Forbidden — provide ?key=APP_SECRET\n";
+    echo "403 Forbidden — provide ?key=wipe-fargny-2026\n";
     exit;
 }
 
