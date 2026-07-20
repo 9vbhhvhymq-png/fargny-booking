@@ -21,6 +21,7 @@ function handle_bookings(string $action, string $id, string $method) {
         default:
             // action is a booking ID
             if ($method === 'DELETE') { bookings_cancel($action); }
+            elseif ($method === 'PUT' || $method === 'PATCH' || $method === 'POST') { bookings_update($action); }
             else json_error('Method not allowed', 405);
     }
 }
@@ -343,6 +344,58 @@ function bookings_cancel(string $idStr) {
     } catch (Exception $e) {}
 
     json_success(['cancellation_status' => 'pending']);
+}
+
+// Update an existing booking's editable fields (open_to_share, remarks).
+// Only the owner or an admin may edit. Dates/week/phase are intentionally
+// NOT editable here — those go through cancel + re-book.
+function bookings_update(string $idStr) {
+    $user = require_auth();
+    $id = (int)$idStr;
+    $body = get_json_body();
+    $db = get_db();
+
+    $stmt = $db->prepare("SELECT * FROM fargny_bookings WHERE id = ? LIMIT 1");
+    $stmt->execute([$id]);
+    $booking = $stmt->fetch();
+    if (!$booking) json_error('Booking not found', 404);
+
+    if ((int)$booking['user_id'] !== (int)$user['id'] && !$user['is_admin']) {
+        json_error('Not authorized', 403);
+    }
+
+    $fields = [];
+    $params = [];
+    if (array_key_exists('open_to_share', $body)) {
+        $fields[] = 'open_to_share = ?';
+        $params[] = $body['open_to_share'] ? 1 : 0;
+    }
+    if (array_key_exists('remarks', $body)) {
+        $fields[] = 'remarks = ?';
+        $params[] = trim((string)$body['remarks']);
+    }
+    if (array_key_exists('linked_user_ids', $body)) {
+        $fields[] = 'linked_user_ids = ?';
+        $params[] = json_encode($body['linked_user_ids'] ?: []);
+    }
+    if (!$fields) json_error('Nothing to update');
+
+    $params[] = $id;
+    $db->prepare("UPDATE fargny_bookings SET " . implode(', ', $fields) . " WHERE id = ?")
+       ->execute($params);
+
+    $stmt = $db->prepare("
+        SELECT b.*, u.display_name, u.email, br.name AS branch_name,
+               COALESCE(p.status, 'not_paid') AS payment_status,
+               p.cleaning_fee AS cleaning_fee
+        FROM fargny_bookings b
+        JOIN fargny_users u ON u.id = b.user_id
+        JOIN fargny_branches br ON br.id = b.branch_id
+        LEFT JOIN fargny_payments p ON p.booking_id = b.id
+        WHERE b.id = ?
+    ");
+    $stmt->execute([$id]);
+    json_success(format_booking($stmt->fetch()));
 }
 
 function bookings_calendar() {
