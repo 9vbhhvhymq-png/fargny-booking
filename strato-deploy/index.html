@@ -372,17 +372,6 @@ function BookingDialog({week, phase, presetCheckIn, presetCheckOut, user, regist
           <label style={{fontSize:12,fontWeight:600,color:COLORS.muted,display:'block',marginBottom:6}}>{t.addRemark}</label>
           <textarea style={{...iS,resize:'vertical'}} rows={2} value={remark} onChange={e=>setRemark(e.target.value)}/>
         </div>
-        {others.length>0 && <div style={{marginBottom:16}}>
-          <label style={{fontSize:12,fontWeight:600,color:COLORS.muted,display:'block',marginBottom:6}}>{t.whoJoining}</label>
-          <div style={{maxHeight:120,overflow:'auto',display:'flex',flexDirection:'column',gap:4}}>
-            {others.map(u=>{
-              const sel=linked.includes(u.email);
-              return <label key={u.email} style={{display:'flex',alignItems:'center',gap:8,fontSize:13,padding:'6px 10px',borderRadius:8,background:sel?COLORS.success+'10':'#F8F5F2',cursor:'pointer',border:sel?'1px solid '+COLORS.success+'30':'1px solid transparent'}}>
-                <input type="checkbox" checked={sel} onChange={()=>toggleLinked(u.email)}/>{u.display_name||u.name}
-              </label>;
-            })}
-          </div>
-        </div>}
         <div style={{display:'flex',gap:8}}>
           <button onClick={onCancel} style={{flex:1,padding:'11px 0',background:COLORS.bg,border:'none',borderRadius:10,fontSize:14,fontWeight:500,color:'#5A4D40',cursor:'pointer',fontFamily:"'DM Sans',sans-serif"}}>{t.cancelBtn}</button>
           <button onClick={()=>onConfirm({open_to_share:openToShare,remark,linked_members:linked,custom_start:isRegular&&useCustom&&customValid?checkIn:null,custom_end:isRegular&&useCustom&&customValid?checkOut:null})} disabled={isRegular&&useCustom&&!customValid} style={{flex:1,padding:'11px 0',background:(isRegular&&useCustom&&!customValid)?'#D4C5B5':COLORS.success,border:'none',borderRadius:10,fontSize:14,fontWeight:600,color:'white',cursor:(isRegular&&useCustom&&!customValid)?'default':'pointer',fontFamily:"'DM Sans',sans-serif"}}>{t.yesBook}</button>
@@ -538,7 +527,7 @@ function WeekRow({week, myBooking, allBookings=[], gcalEvents=[], boardEvents=[]
   const userBranch = FAMILY_BRANCHES.find(b=>b.id===user.branch_id);
   const isPending = hasMyBooking && myBooking.cancellation_status==='pending';
   let weekBookedByOther=false, weekNotOpen=false, partialBlock=null, specialEvent=null;
-  if(phase==='regular' && !hasMyBooking){
+  if(!hasMyBooking && (phase==='regular'||phase==='clan'||phase==='priority')){
     const confirmed = allBookings.filter(b=>b.week_id===week.id && b.cancellation_status!=='approved');
     // For regular bookings, work out per-day occupancy from gcal so a single
     // legacy event in the middle of the week doesn't block the entire week.
@@ -568,25 +557,31 @@ function WeekRow({week, myBooking, allBookings=[], gcalEvents=[], boardEvents=[]
       if(overlaps && !specialEvent) specialEvent=ev;
     });
     const blockedCount = allDays.filter(d=>dayBlocked[d]).length;
-    if(blockedCount===allDays.length) weekBookedByOther = true;
-    else if(blockedCount>0){
-      // Compute the longest free contiguous range so we can suggest one.
-      let bestStart=null, bestEnd=null, bestLen=0, curStart=null;
-      for(const d of allDays){
-        if(!dayBlocked[d]){
-          if(!curStart) curStart=d;
-          const len = (new Date(d)-new Date(curStart))/(1000*60*60*24)+1;
-          if(len>bestLen){ bestLen=len; bestStart=curStart; bestEnd=d; }
-        } else { curStart=null; }
+    if(phase==='regular'){
+      if(blockedCount===allDays.length) weekBookedByOther = true;
+      else if(blockedCount>0){
+        // Compute the longest free contiguous range so we can suggest one.
+        let bestStart=null, bestEnd=null, bestLen=0, curStart=null;
+        for(const d of allDays){
+          if(!dayBlocked[d]){
+            if(!curStart) curStart=d;
+            const len = (new Date(d)-new Date(curStart))/(1000*60*60*24)+1;
+            if(len>bestLen){ bestLen=len; bestStart=curStart; bestEnd=d; }
+          } else { curStart=null; }
+        }
+        partialBlock = { freeStart: bestStart, freeEnd: bestEnd, blockedCount, totalCount: allDays.length };
       }
-      partialBlock = { freeStart: bestStart, freeEnd: bestEnd, blockedCount, totalCount: allDays.length };
+      if(!isWeekBookableRegular(week.start)) weekNotOpen=true;
+    } else {
+      // Clan/Priority book a whole week — any occupied day blocks it. Blind
+      // bookings still count, so a week can never be double-booked.
+      if(blockedCount>0) weekBookedByOther = true;
     }
-    if(!isWeekBookableRegular(week.start)) weekNotOpen=true;
   }
   let bookable=false, reason='';
   if(!hasMyBooking && phaseActive){
-    if(phase==='clan'){if(clanBookedByBranch)reason=t.branchAlreadyBooked;else bookable=true;}
-    else if(phase==='priority'){if(userBookedPriority)reason=t.youAlreadyBooked;else bookable=true;}
+    if(phase==='clan'){if(clanBookedByBranch)reason=t.branchAlreadyBooked;else if(weekBookedByOther)reason=t.weekBookedByOther;else bookable=true;}
+    else if(phase==='priority'){if(userBookedPriority)reason=t.youAlreadyBooked;else if(weekBookedByOther)reason=t.weekBookedByOther;else bookable=true;}
     else{if(weekBookedByOther)reason=t.weekBookedByOther;else if(weekNotOpen)reason=t.weekNotYetOpen+' '+formatFullDate(regularOpenDate(week.start),lang);else bookable=true;}
   }
   const barColor = hasMyBooking&&myBooking.open_to_share ? COLORS.openToShare : (userBranch?userBranch.color:'#ccc');

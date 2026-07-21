@@ -187,6 +187,36 @@ function bookings_create() {
         if ($stmt->fetch()) json_error('You already have a priority booking this year');
     }
 
+    // Clan/Priority book a whole week. The house can only be used once per
+    // week, so a week already taken by ANY booking, a Google Calendar event,
+    // or a special event is not bookable — even during the blind phases.
+    if (($phase === 'clan' || $phase === 'priority') && !$isAdmin) {
+        $weeks = generate_weeks($year);
+        $week = null;
+        foreach ($weeks as $w) { if ($w['id'] === $weekId) { $week = $w; break; } }
+        if ($week) {
+            $rs = $week['start']; $re = $week['end'];
+
+            $s = $db->prepare("SELECT id FROM fargny_bookings WHERE week_id = ? AND cancellation_status NOT IN ('approved') LIMIT 1");
+            $s->execute([$weekId]);
+            if ($s->fetch()) json_error('This week is already booked');
+
+            require_once __DIR__ . '/google-calendar.php';
+            $gc = @gcal_get_events();
+            if (is_array($gc)) {
+                foreach ($gc as $ev) {
+                    $es = $ev['start_date'] ?? ''; $ee = $ev['end_date'] ?? $es;
+                    if (!$es) continue;
+                    if ($es <= $re && $ee >= $rs) json_error('These dates are already booked via the existing calendar');
+                }
+            }
+
+            $evStmt = $db->prepare("SELECT id FROM fargny_board_events WHERE start_date <= ? AND end_date >= ? LIMIT 1");
+            $evStmt->execute([$re, $rs]);
+            if ($evStmt->fetch()) json_error('These dates are reserved for a special event — join the event instead');
+        }
+    }
+
     // Regular: week must be within 6 months, max 7 nights
     if ($phase === 'regular' && !$isAdmin) {
         $weeks = generate_weeks($year);
