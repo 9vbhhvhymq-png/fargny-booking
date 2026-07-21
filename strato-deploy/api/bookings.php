@@ -268,6 +268,20 @@ function bookings_create() {
                 }
             }
         }
+
+        // Reject if the chosen range overlaps a special event — those dates
+        // are reserved and members should join the event instead of booking.
+        if ($rangeStart && $rangeEnd) {
+            $evStmt = $db->prepare("
+                SELECT id FROM fargny_board_events
+                WHERE start_date <= ? AND end_date >= ?
+                LIMIT 1
+            ");
+            $evStmt->execute([$rangeEnd, $rangeStart]);
+            if ($evStmt->fetch()) {
+                json_error('These dates are reserved for a special event — join the event instead');
+            }
+        }
     }
 
     // No double booking: same week, same user
