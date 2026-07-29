@@ -21,9 +21,47 @@ function handle_auth(string $action, string $method) {
             if ($method !== 'GET') json_error('GET required', 405);
             auth_me();
             break;
+        case 'request-reset':
+            if ($method !== 'POST') json_error('POST required', 405);
+            auth_request_reset();
+            break;
+        case 'reset-password':
+            if ($method !== 'POST') json_error('POST required', 405);
+            auth_reset_password();
+            break;
         default:
             json_error('Unknown auth action', 404);
     }
+}
+
+// Password-reset tokens live in their own table. Created on demand so no
+// manual migration is needed on the shared host.
+function ensure_reset_table() {
+    get_db()->exec("
+        CREATE TABLE IF NOT EXISTS `fargny_password_resets` (
+          `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+          `user_id` INT UNSIGNED NOT NULL,
+          `token_hash` CHAR(64) NOT NULL,
+          `expires_at` DATETIME NOT NULL,
+          `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (`id`),
+          UNIQUE KEY `uq_token_hash` (`token_hash`),
+          KEY `idx_user` (`user_id`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    ");
+}
+
+// Absolute URL of the app root (the folder containing index.html), derived
+// from the current request so it works at /booking/ or any other sub-path.
+function app_base_url(): string {
+    $https  = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+              || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
+    $scheme = $https ? 'https' : 'http';
+    $host   = $_SERVER['HTTP_HOST'] ?? 'fargny.org';
+    // SCRIPT_NAME is e.g. /booking/api/index.php -> app root is /booking
+    $dir = str_replace('\\', '/', dirname(dirname($_SERVER['SCRIPT_NAME'] ?? '/api/index.php')));
+    if ($dir === '/' || $dir === '.') $dir = '';
+    return $scheme . '://' . $host . $dir . '/';
 }
 
 function create_session(int $userId): string {
@@ -130,6 +168,75 @@ function auth_register() {
 
     $token = create_session($userId);
     json_success(format_user_response($user, $token), 201);
+}
+
+// Step 1: user asks for a reset link. Always reports success so the
+// endpoint can't be used to discover which emails are registered.
+function auth_request_reset() {
+    $body  = get_json_body();
+    $email = strtolower(trim($body['email'] ?? ''));
+
+    $done = ['sent' => true];
+    if (!$email) json_success($done);
+
+    try {
+        $db = get_db();
+        ensure_reset_table();
+
+        $stmt = $db->prepare("SELECT id, display_name, email FROM fargny_users WHERE email = ? LIMIT 1");
+        $stmt->execute([$email]);
+        $user = $stmt->fetch();
+        if (!$user) json_success($done);
+
+        // Drop older tokens for this user, then issue a fresh one (1 hour).
+        $db->prepare("DELETE FROM fargny_password_resets WHERE user_id = ? OR expires_at < NOW()")
+           ->execute([$user['id']]);
+
+        $token   = bin2hex(random_bytes(32));
+        $expires = date('Y-m-d H:i:s', strtotime('+1 hour'));
+        $db->prepare("INSERT INTO fargny_password_resets (user_id, token_hash, expires_at) VALUES (?, ?, ?)")
+           ->execute([$user['id'], hash('sha256', $token), $expires]);
+
+        require_once __DIR__ . '/email.php';
+        send_password_reset($user, app_base_url() . '?reset=' . $token);
+    } catch (Exception $e) {
+        // Never leak internals — the user still sees the neutral message.
+    }
+
+    json_success($done);
+}
+
+// Step 2: user submits a new password together with the emailed token.
+function auth_reset_password() {
+    $body     = get_json_body();
+    $token    = trim($body['token'] ?? '');
+    $password = $body['password'] ?? '';
+
+    if (!$token) json_error('Reset token required');
+    if (strlen($password) < 8) json_error('Password must be at least 8 characters');
+
+    $db = get_db();
+    ensure_reset_table();
+
+    $stmt = $db->prepare("
+        SELECT r.id, r.user_id
+        FROM fargny_password_resets r
+        WHERE r.token_hash = ? AND r.expires_at > NOW()
+        LIMIT 1
+    ");
+    $stmt->execute([hash('sha256', $token)]);
+    $row = $stmt->fetch();
+    if (!$row) json_error('This reset link is invalid or has expired', 400);
+
+    $userId = (int)$row['user_id'];
+    $db->prepare("UPDATE fargny_users SET password_hash = ? WHERE id = ?")
+       ->execute([password_hash($password, PASSWORD_BCRYPT), $userId]);
+
+    // Burn the token and sign out everywhere so a stolen link is useless.
+    $db->prepare("DELETE FROM fargny_password_resets WHERE user_id = ?")->execute([$userId]);
+    $db->prepare("DELETE FROM fargny_sessions WHERE user_id = ?")->execute([$userId]);
+
+    json_success(['reset' => true]);
 }
 
 function auth_logout() {

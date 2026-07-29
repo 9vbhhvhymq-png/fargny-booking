@@ -67,6 +67,21 @@ function send_booking_confirmation(array $user, array $booking) {
     send_email($email, "Booking Confirmed: $weekId", email_template('Booking Confirmation', $content));
 }
 
+function send_password_reset(array $user, string $link) {
+    $email = $user['email'] ?? '';
+    if (!$email) return;
+
+    $safeLink = htmlspecialchars($link, ENT_QUOTES);
+    $content = '<p style="color:#2C1810;font-size:15px;">Dear ' . htmlspecialchars($user['display_name'] ?? '') . ',</p>
+    <p style="color:#2C1810;font-size:15px;">We received a request to reset your Fargny booking password. Click the button below to choose a new one. This link expires in <strong>1 hour</strong>.</p>
+    <p style="margin:24px 0;"><a href="' . $safeLink . '" style="display:inline-block;padding:12px 24px;background:#B85042;color:#ffffff;text-decoration:none;border-radius:10px;font-weight:600;font-size:15px;">Choose a new password</a></p>
+    <p style="color:#8B7D6B;font-size:12px;">If the button does not work, copy this link into your browser:<br>
+    <span style="color:#3B6B9E;word-break:break-all;">' . $safeLink . '</span></p>
+    <p style="color:#8B7D6B;font-size:13px;">If you did not request this, you can safely ignore this email — your password stays unchanged.</p>';
+
+    send_email($email, 'Reset your Fargny password', email_template('Password Reset', $content));
+}
+
 function send_cancellation_request(array $user, array $booking) {
     $weekId = $booking['week_id'] ?? '';
     $userName = $user['display_name'] ?? $user['email'] ?? '';
