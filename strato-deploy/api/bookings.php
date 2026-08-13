@@ -26,6 +26,53 @@ function handle_bookings(string $action, string $id, string $method) {
     }
 }
 
+// ---- Occupancy helpers -------------------------------------------------
+// A stay occupies NIGHTS, not days. Departure day and arrival day are the
+// same changeover day: the guest who leaves on the 13th frees that date for
+// the guest arriving on the 13th. Every range below is therefore expressed
+// as [start, endExclusive) where endExclusive is the departure date.
+
+function date_plus_days(string $d, int $n): string {
+    $dt = new DateTime($d);
+    $dt->modify(($n >= 0 ? '+' : '-') . abs($n) . ' days');
+    return $dt->format('Y-m-d');
+}
+
+// Effective night range of a stored booking. A booking without explicit
+// dates occupies its whole week (7 nights), so it departs the day after
+// week end.
+function booking_night_range(array $b, array &$weeksByYear): ?array {
+    $start = $b['check_in_date'] ?? null;
+    $end   = $b['check_out_date'] ?? null;
+    if (!$start || !$end) {
+        $y = (int)($b['year'] ?? 0);
+        if (!isset($weeksByYear[$y])) $weeksByYear[$y] = generate_weeks($y);
+        foreach ($weeksByYear[$y] as $w) {
+            if ($w['id'] === ($b['week_id'] ?? '')) {
+                if (!$start) $start = $w['start'];
+                if (!$end)   $end   = date_plus_days($w['end'], 1);
+                break;
+            }
+        }
+    }
+    return ($start && $end) ? [$start, $end] : null;
+}
+
+// Google Calendar: multi-day entries name the departure date (family
+// convention), single-day entries occupy that one day.
+function gcal_night_range(array $ev): ?array {
+    $s = $ev['start_date'] ?? '';
+    if (!$s) return null;
+    $e = $ev['end_date'] ?? $s;
+    $endExcl = ($e > $s) ? $e : date_plus_days($s, 1);
+    return [$s, $endExcl];
+}
+
+// Half-open interval overlap: touching at the changeover date is allowed.
+function ranges_overlap(string $aStart, string $aEndExcl, string $bStart, string $bEndExcl): bool {
+    return $aStart < $bEndExcl && $bStart < $aEndExcl;
+}
+
 function format_booking(array $b): array {
     return [
         'id'                  => (int)$b['id'],
@@ -195,23 +242,31 @@ function bookings_create() {
         $week = null;
         foreach ($weeks as $w) { if ($w['id'] === $weekId) { $week = $w; break; } }
         if ($week) {
-            $rs = $week['start']; $re = $week['end'];
+            // Whole week = 7 nights, departing the day after week end.
+            $rs = $week['start']; $re = date_plus_days($week['end'], 1);
 
-            $s = $db->prepare("SELECT id FROM fargny_bookings WHERE week_id = ? AND cancellation_status NOT IN ('approved') LIMIT 1");
-            $s->execute([$weekId]);
-            if ($s->fetch()) json_error('This week is already booked');
+            $s = $db->prepare("
+                SELECT week_id, year, check_in_date, check_out_date
+                FROM fargny_bookings
+                WHERE cancellation_status NOT IN ('approved')
+            ");
+            $s->execute();
+            $wby = [];
+            foreach ($s->fetchAll() as $ex) {
+                $r = booking_night_range($ex, $wby);
+                if ($r && ranges_overlap($r[0], $r[1], $rs, $re)) json_error('This week is already booked');
+            }
 
             require_once __DIR__ . '/google-calendar.php';
             $gc = @gcal_get_events();
             if (is_array($gc)) {
                 foreach ($gc as $ev) {
-                    $es = $ev['start_date'] ?? ''; $ee = $ev['end_date'] ?? $es;
-                    if (!$es) continue;
-                    if ($es <= $re && $ee >= $rs) json_error('These dates are already booked via the existing calendar');
+                    $r = gcal_night_range($ev);
+                    if ($r && ranges_overlap($r[0], $r[1], $rs, $re)) json_error('These dates are already booked via the existing calendar');
                 }
             }
 
-            $evStmt = $db->prepare("SELECT id FROM fargny_board_events WHERE start_date <= ? AND end_date >= ? LIMIT 1");
+            $evStmt = $db->prepare("SELECT id FROM fargny_board_events WHERE start_date < ? AND DATE_ADD(end_date, INTERVAL 1 DAY) > ? LIMIT 1");
             $evStmt->execute([$re, $rs]);
             if ($evStmt->fetch()) json_error('These dates are reserved for a special event — join the event instead');
         }
@@ -240,15 +295,16 @@ function bookings_create() {
             if ($nights < 1) json_error('Check-out must be after check-in');
         }
 
-        // Compute the actual date range we are about to reserve. Default to
-        // the full week if the user did not pick custom dates.
+        // Nights we are about to reserve, as [start, departure). Without
+        // custom dates the booking takes the whole week and departs the day
+        // after week end.
         $rangeStart = $checkIn ?: ($week['start'] ?? null);
-        $rangeEnd   = $checkOut ?: ($week['end'] ?? null);
+        $rangeEnd   = $checkOut ?: (isset($week['end']) ? date_plus_days($week['end'], 1) : null);
 
-        // Reject if the chosen range overlaps with another Fargny booking.
-        // Bookings stored without explicit check-in/out dates occupy their
-        // full week, so resolve effective dates from the week id in PHP —
-        // a NULL-date fallback inside the SQL would match every booking.
+        // Reject if the chosen nights overlap another Fargny booking.
+        // Bookings stored without explicit dates occupy their full week, so
+        // resolve effective dates from the week id in PHP — a NULL-date
+        // fallback inside the SQL would match every booking.
         if ($rangeStart && $rangeEnd) {
             $stmt = $db->prepare("
                 SELECT week_id, year, check_in_date, check_out_date
@@ -258,21 +314,9 @@ function bookings_create() {
             $stmt->execute();
             $weeksByYear = [];
             foreach ($stmt->fetchAll() as $ex) {
-                $es = $ex['check_in_date'];
-                $ee = $ex['check_out_date'];
-                if (!$es || !$ee) {
-                    $exYear = (int)$ex['year'];
-                    if (!isset($weeksByYear[$exYear])) $weeksByYear[$exYear] = generate_weeks($exYear);
-                    foreach ($weeksByYear[$exYear] as $w2) {
-                        if ($w2['id'] === $ex['week_id']) {
-                            if (!$es) $es = $w2['start'];
-                            if (!$ee) $ee = $w2['end'];
-                            break;
-                        }
-                    }
-                }
-                if (!$es || !$ee) continue;
-                if ($es <= $rangeEnd && $ee >= $rangeStart) {
+                $r = booking_night_range($ex, $weeksByYear);
+                if (!$r) continue;
+                if (ranges_overlap($r[0], $r[1], $rangeStart, $rangeEnd)) {
                     json_error('These dates overlap with an existing booking');
                 }
             }
@@ -283,28 +327,29 @@ function bookings_create() {
             if ($stmt->fetch()) json_error('This week is already booked');
         }
 
-        // Reject only if the chosen DATE RANGE overlaps any Google Calendar
-        // event — single-day legacy events no longer block the whole week.
+        // Reject only if the chosen nights overlap a Google Calendar event —
+        // arriving on the day a previous guest departs is fine.
         if ($rangeStart && $rangeEnd) {
             require_once __DIR__ . '/google-calendar.php';
             $gcalEvents = @gcal_get_events();
             if (is_array($gcalEvents)) {
                 foreach ($gcalEvents as $ev) {
-                    $es = $ev['start_date'] ?? ''; $ee = $ev['end_date'] ?? $es;
-                    if (!$es) continue;
-                    if ($es <= $rangeEnd && $ee >= $rangeStart) {
+                    $r = gcal_night_range($ev);
+                    if (!$r) continue;
+                    if (ranges_overlap($r[0], $r[1], $rangeStart, $rangeEnd)) {
                         json_error('These dates are already booked via the existing calendar');
                     }
                 }
             }
         }
 
-        // Reject if the chosen range overlaps a special event — those dates
+        // Reject if the chosen nights overlap a special event — those dates
         // are reserved and members should join the event instead of booking.
+        // An event occupies its days, so it "departs" the day after end_date.
         if ($rangeStart && $rangeEnd) {
             $evStmt = $db->prepare("
                 SELECT id FROM fargny_board_events
-                WHERE start_date <= ? AND end_date >= ?
+                WHERE start_date < ? AND DATE_ADD(end_date, INTERVAL 1 DAY) > ?
                 LIMIT 1
             ");
             $evStmt->execute([$rangeEnd, $rangeStart]);

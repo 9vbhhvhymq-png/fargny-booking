@@ -538,15 +538,20 @@ function WeekRow({week, myBooking, allBookings=[], gcalEvents=[], boardEvents=[]
       const d = new Date(ws); const endD = new Date(we);
       while (d <= endD) { const iso = toISO(d); allDays.push(iso); dayBlocked[iso]=false; d.setDate(d.getDate()+1); }
     }
-    // App bookings block their actual check_in..check_out range (or full week if not set)
+    // A stay occupies NIGHTS: [check-in, departure). The departure day is
+    // free again for the next arrival, so ranges are half-open. A booking
+    // without custom dates takes the whole week and departs the day after.
+    const addDay=(iso,n)=>{const d=new Date(iso);d.setDate(d.getDate()+n);return toISO(d);};
     confirmed.forEach(b=>{
-      const cs=b.check_in_date||ws, ce=b.check_out_date||we;
-      allDays.forEach(d=>{ if(d>=cs && d<=ce) dayBlocked[d]=true; });
+      const cs=b.check_in_date||ws, ce=b.check_out_date||addDay(we,1);
+      allDays.forEach(d=>{ if(d>=cs && d<ce) dayBlocked[d]=true; });
     });
-    // Google Calendar events block only the days they actually cover
+    // Google Calendar: multi-day entries name the departure day (family
+    // convention); single-day entries occupy that one day.
     (gcalEvents||[]).forEach(ev=>{
-      const es=ev.start_date||'', ee=ev.end_date||es; if(!es) return;
-      allDays.forEach(d=>{ if(d>=es && d<=ee) dayBlocked[d]=true; });
+      const es=ev.start_date||''; if(!es) return;
+      const raw=ev.end_date||es, ee=(raw>es)?raw:addDay(es,1);
+      allDays.forEach(d=>{ if(d>=es && d<ee) dayBlocked[d]=true; });
     });
     // Special events reserve their dates too — block them and remember the
     // event so we can offer a "join special event" action on this week.
@@ -556,6 +561,8 @@ function WeekRow({week, myBooking, allBookings=[], gcalEvents=[], boardEvents=[]
       allDays.forEach(d=>{ if(d>=es && d<=ee){ dayBlocked[d]=true; overlaps=true; } });
       if(overlaps && !specialEvent) specialEvent=ev;
     });
+    // The suggested custom range should end on the departure day, i.e. the
+    // day after the last free night, so a changeover is bookable.
     const blockedCount = allDays.filter(d=>dayBlocked[d]).length;
     if(phase==='regular'){
       if(blockedCount===allDays.length) weekBookedByOther = true;
@@ -569,7 +576,7 @@ function WeekRow({week, myBooking, allBookings=[], gcalEvents=[], boardEvents=[]
             if(len>bestLen){ bestLen=len; bestStart=curStart; bestEnd=d; }
           } else { curStart=null; }
         }
-        partialBlock = { freeStart: bestStart, freeEnd: bestEnd, blockedCount, totalCount: allDays.length };
+        partialBlock = { freeStart: bestStart, freeEnd: bestEnd?addDay(bestEnd,1):bestEnd, blockedCount, totalCount: allDays.length };
       }
       if(!isWeekBookableRegular(week.start)) weekNotOpen=true;
     } else {
