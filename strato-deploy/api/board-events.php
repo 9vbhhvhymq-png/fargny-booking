@@ -30,9 +30,69 @@ function handle_board_events(string $action, string $id, string $method) {
         board_events_unsignup((int)$action);
     } elseif ($id === '' && $action !== '' && $method === 'DELETE') {
         board_events_delete((int)$action);
+    } elseif ($id === '' && $action !== '' && ($method === 'PUT' || $method === 'PATCH')) {
+        board_events_update((int)$action);
     } else {
         json_error('Not found', 404);
     }
+}
+
+// Edit a special event. Only the creator or an admin may do this.
+function board_events_update(int $eventId) {
+    $user = require_auth();
+    if (!$eventId) json_error('Event id required');
+    $body = get_json_body();
+    $db = get_db();
+
+    $stmt = $db->prepare("SELECT id, created_by FROM fargny_board_events WHERE id = ? LIMIT 1");
+    $stmt->execute([$eventId]);
+    $ev = $stmt->fetch();
+    if (!$ev) json_error('Event not found', 404);
+
+    $isCreator = $ev['created_by'] !== null && (int)$ev['created_by'] === (int)$user['id'];
+    if (!$isCreator && !$user['is_admin']) {
+        json_error('Only the creator or an admin can edit this event', 403);
+    }
+
+    $fields = [];
+    $params = [];
+    if (array_key_exists('name', $body)) {
+        $name = trim((string)$body['name']);
+        if ($name === '') json_error('Event name cannot be empty');
+        $fields[] = 'name = ?';        $params[] = $name;
+    }
+    if (array_key_exists('start_date', $body)) {
+        if (!$body['start_date']) json_error('Start date required');
+        $fields[] = 'start_date = ?';  $params[] = $body['start_date'];
+    }
+    if (array_key_exists('end_date', $body)) {
+        if (!$body['end_date']) json_error('End date required');
+        $fields[] = 'end_date = ?';    $params[] = $body['end_date'];
+    }
+    if (array_key_exists('description', $body)) {
+        $fields[] = 'description = ?'; $params[] = trim((string)$body['description']);
+    }
+    if (array_key_exists('max_participants', $body) && board_events_has_max_col()) {
+        $maxP = ($body['max_participants'] === null || $body['max_participants'] === '')
+                ? null : (int)$body['max_participants'];
+        $fields[] = 'max_participants = ?'; $params[] = $maxP;
+    }
+    if (!$fields) json_error('Nothing to update');
+
+    // Guard against an end date before the start date, using whichever
+    // values the update leaves in place.
+    $chk = $db->prepare("SELECT start_date, end_date FROM fargny_board_events WHERE id = ? LIMIT 1");
+    $chk->execute([$eventId]);
+    $cur   = $chk->fetch();
+    $start = $body['start_date'] ?? $cur['start_date'];
+    $end   = $body['end_date']   ?? $cur['end_date'];
+    if ($start && $end && $end < $start) json_error('End date must be on or after the start date');
+
+    $params[] = $eventId;
+    $db->prepare("UPDATE fargny_board_events SET " . implode(', ', $fields) . " WHERE id = ?")
+       ->execute($params);
+
+    json_success(['id' => $eventId]);
 }
 
 // Cancel a special event. Only the creator or an admin may do this.
