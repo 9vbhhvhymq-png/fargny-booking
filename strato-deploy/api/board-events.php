@@ -28,9 +28,37 @@ function handle_board_events(string $action, string $id, string $method) {
         board_events_signup((int)$action);
     } elseif ($id === 'signup' && $method === 'DELETE') {
         board_events_unsignup((int)$action);
+    } elseif ($id === '' && $action !== '' && $method === 'DELETE') {
+        board_events_delete((int)$action);
     } else {
         json_error('Not found', 404);
     }
+}
+
+// Cancel a special event. Only the creator or an admin may do this.
+// Signups are removed with it (ON DELETE CASCADE), which also frees the
+// dates for regular bookings again.
+function board_events_delete(int $eventId) {
+    $user = require_auth();
+    if (!$eventId) json_error('Event id required');
+    $db = get_db();
+
+    $stmt = $db->prepare("SELECT id, created_by FROM fargny_board_events WHERE id = ? LIMIT 1");
+    $stmt->execute([$eventId]);
+    $ev = $stmt->fetch();
+    if (!$ev) json_error('Event not found', 404);
+
+    $isCreator = $ev['created_by'] !== null && (int)$ev['created_by'] === (int)$user['id'];
+    if (!$isCreator && !$user['is_admin']) {
+        json_error('Only the creator or an admin can cancel this event', 403);
+    }
+
+    // Explicit signup delete first, in case the FK cascade is missing on
+    // an older copy of the schema.
+    $db->prepare("DELETE FROM fargny_board_signups WHERE event_id = ?")->execute([$eventId]);
+    $db->prepare("DELETE FROM fargny_board_events WHERE id = ?")->execute([$eventId]);
+
+    json_success(null);
 }
 
 function board_events_list() {
@@ -81,6 +109,11 @@ function board_events_list() {
             'end_date'        => $ev['end_date'],
             'description'     => $ev['description'],
             'creator_name'    => $ev['creator_name'],
+            'created_by'      => $ev['created_by'] !== null ? (int)$ev['created_by'] : null,
+            'can_delete'      => $user
+                                 ? (!empty($user['is_admin'])
+                                    || ($ev['created_by'] !== null && (int)$ev['created_by'] === (int)$user['id']))
+                                 : false,
             'signup_count'    => (int)$ev['signup_count'],
             'max_participants'=> isset($ev['max_participants']) && $ev['max_participants']!==null ? (int)$ev['max_participants'] : null,
             'participants'    => $participants,
