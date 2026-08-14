@@ -16,7 +16,7 @@ function handle_payments(string $bookingId, string $method) {
 }
 
 function payments_get(int $bookingId) {
-    $user = require_auth();
+    $user = require_shareholder('Family members do not have access to payments');
     $db = get_db();
 
     $stmt = $db->prepare("
@@ -70,7 +70,7 @@ function payments_get(int $bookingId) {
 }
 
 function payments_save(int $bookingId) {
-    $user = require_auth();
+    $user = require_shareholder('Family members do not have access to payments');
     $body = get_json_body();
     $db = get_db();
 

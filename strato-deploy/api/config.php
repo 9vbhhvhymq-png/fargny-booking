@@ -160,7 +160,7 @@ function get_auth_user(): ?array {
 
     $db = get_db();
     $stmt = $db->prepare("
-        SELECT u.id, u.display_name, u.email, u.branch_id, u.is_admin, u.last_login, u.created_at
+        SELECT u.*
         FROM fargny_sessions s
         JOIN fargny_users u ON u.id = s.user_id
         WHERE s.token = ? AND s.expires_at > NOW()
@@ -214,9 +214,52 @@ function generate_weeks(int $year): array {
     return $weeks;
 }
 
+// ---- Roles -------------------------------------------------------------
+// 'admin' | 'shareholder' | 'family_member'. Applied automatically so a
+// deploy works without anyone running database/add-family-member-role.sql.
+function ensure_role_columns() {
+    static $done = false;
+    if ($done) return;
+    $done = true;
+    $db = get_db();
+    try {
+        $has = $db->query("SHOW COLUMNS FROM fargny_users LIKE 'role'")->fetch();
+        if (!$has) {
+            $db->exec("ALTER TABLE fargny_users
+                       ADD COLUMN role ENUM('admin','shareholder','family_member')
+                       NOT NULL DEFAULT 'shareholder' AFTER is_admin");
+            $db->exec("UPDATE fargny_users SET role = 'admin' WHERE is_admin = 1");
+        }
+        $hasSh = $db->query("SHOW COLUMNS FROM fargny_users LIKE 'connected_shareholder_id'")->fetch();
+        if (!$hasSh) {
+            $db->exec("ALTER TABLE fargny_users
+                       ADD COLUMN connected_shareholder_id INT UNSIGNED DEFAULT NULL AFTER role");
+        }
+    } catch (Exception $e) { /* tolerate: callers fall back to is_admin */ }
+}
+
+function user_role(array $user): string {
+    if (!empty($user['is_admin'])) return 'admin';
+    $r = $user['role'] ?? 'shareholder';
+    return in_array($r, ['admin', 'shareholder', 'family_member'], true) ? $r : 'shareholder';
+}
+
+function is_family_member(array $user): bool {
+    return user_role($user) === 'family_member';
+}
+
+// Family members may look, sign up for events and join shared bookings,
+// but they cannot create or change bookings, events or payments.
+function require_shareholder(string $message = 'Family members cannot create bookings'): array {
+    $user = require_auth();
+    if (is_family_member($user)) json_error($message, 403);
+    return $user;
+}
+
 // ---- Seed admin on first run ----
 function seed_admin_if_needed() {
     $db = get_db();
+    ensure_role_columns();
 
     // 1. Ensure 'Moritz Fromageot' exists in fargny_shareholders (branch 9 = Bertrand).
     //    Rename the legacy 'Moritz (1992)' entry if present; insert otherwise.

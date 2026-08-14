@@ -89,6 +89,9 @@ function format_user_response(array $user, string $token): array {
             'email'        => $user['email'],
             'branch_id'    => (int)$user['branch_id'],
             'is_admin'     => (bool)$user['is_admin'],
+            'role'         => user_role($user),
+            'connected_shareholder_id' => isset($user['connected_shareholder_id']) && $user['connected_shareholder_id'] !== null
+                                          ? (int)$user['connected_shareholder_id'] : null,
             'last_login'   => $user['last_login'],
         ],
     ];
@@ -122,6 +125,11 @@ function auth_login() {
 
 function auth_register() {
     $body = get_json_body();
+    if (($body['role'] ?? '') === 'family_member') {
+        auth_register_family_member($body);
+        return;
+    }
+
     $shareholderId = (int)($body['shareholder_id'] ?? 0);
     $email = strtolower(trim($body['email'] ?? ''));
     $password = $body['password'] ?? '';
@@ -239,6 +247,51 @@ function auth_reset_password() {
     json_success(['reset' => true]);
 }
 
+// Family members are not shareholders: they give their own name and pick
+// the shareholder they belong to, inheriting that shareholder's branch.
+function auth_register_family_member(array $body) {
+    $name     = trim($body['display_name'] ?? '');
+    $email    = strtolower(trim($body['email'] ?? ''));
+    $password = $body['password'] ?? '';
+    $connId   = (int)($body['connected_shareholder_id'] ?? 0);
+
+    if (!$name || !$email || !$password || !$connId) {
+        json_error('Name, email, password and connected shareholder are required');
+    }
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) json_error('Invalid email address');
+    if (strlen($password) < 8) json_error('Password must be at least 8 characters');
+
+    $db = get_db();
+    ensure_role_columns();
+
+    $stmt = $db->prepare("SELECT id, branch_id FROM fargny_shareholders WHERE id = ? LIMIT 1");
+    $stmt->execute([$connId]);
+    $sh = $stmt->fetch();
+    if (!$sh) json_error('Shareholder not found');
+
+    $stmt = $db->prepare("SELECT id FROM fargny_users WHERE email = ? LIMIT 1");
+    $stmt->execute([$email]);
+    if ($stmt->fetch()) json_error('Email already in use');
+
+    $hash = password_hash($password, PASSWORD_BCRYPT);
+    $db->prepare("
+        INSERT INTO fargny_users
+            (display_name, email, password_hash, branch_id, is_admin, role, connected_shareholder_id)
+        VALUES (?, ?, ?, ?, 0, 'family_member', ?)
+    ")->execute([$name, $email, $hash, (int)$sh['branch_id'], $connId]);
+    $userId = (int)$db->lastInsertId();
+
+    // Note: fargny_shareholders.user_id is deliberately NOT set — a family
+    // member does not consume a shareholder slot.
+    $db->prepare("UPDATE fargny_users SET last_login = NOW() WHERE id = ?")->execute([$userId]);
+
+    $stmt = $db->prepare("SELECT * FROM fargny_users WHERE id = ? LIMIT 1");
+    $stmt->execute([$userId]);
+    $user = $stmt->fetch();
+
+    json_success(format_user_response($user, create_session($userId)), 201);
+}
+
 function auth_logout() {
     $token = get_bearer_token();
     if ($token) {
@@ -271,6 +324,9 @@ function auth_me() {
             'email'        => $user['email'],
             'branch_id'    => (int)$user['branch_id'],
             'is_admin'     => (bool)$user['is_admin'],
+            'role'         => user_role($user),
+            'connected_shareholder_id' => isset($user['connected_shareholder_id']) && $user['connected_shareholder_id'] !== null
+                                          ? (int)$user['connected_shareholder_id'] : null,
             'last_login'   => $user['last_login'],
         ],
     ]);

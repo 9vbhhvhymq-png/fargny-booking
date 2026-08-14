@@ -20,7 +20,12 @@ function handle_bookings(string $action, string $id, string $method) {
             break;
         default:
             // action is a booking ID
-            if ($method === 'DELETE') { bookings_cancel($action); }
+            if ($id === 'join') {
+                if ($method === 'POST')        { bookings_join($action); }
+                elseif ($method === 'DELETE')  { bookings_leave($action); }
+                else json_error('Method not allowed', 405);
+            }
+            elseif ($method === 'DELETE') { bookings_cancel($action); }
             elseif ($method === 'PUT' || $method === 'PATCH' || $method === 'POST') { bookings_update($action); }
             else json_error('Method not allowed', 405);
     }
@@ -172,7 +177,7 @@ function bookings_list() {
 }
 
 function bookings_create() {
-    $user = require_auth();
+    $user = require_shareholder('Family members cannot create bookings');
     $body = get_json_body();
     $db = get_db();
 
@@ -409,7 +414,7 @@ function bookings_create() {
 }
 
 function bookings_cancel(string $idStr) {
-    $user = require_auth();
+    $user = require_shareholder('Family members cannot cancel bookings');
     $id = (int)$idStr;
     $db = get_db();
 
@@ -439,7 +444,7 @@ function bookings_cancel(string $idStr) {
 // Only the owner or an admin may edit. Dates/week/phase are intentionally
 // NOT editable here — those go through cancel + re-book.
 function bookings_update(string $idStr) {
-    $user = require_auth();
+    $user = require_shareholder('Family members cannot change bookings');
     $id = (int)$idStr;
     $body = get_json_body();
     $db = get_db();
@@ -485,6 +490,51 @@ function bookings_update(string $idStr) {
     ");
     $stmt->execute([$id]);
     json_success(format_booking($stmt->fetch()));
+}
+
+// Join a booking the owner marked "open to share". Open to every role —
+// this is how family members take part without creating bookings.
+function bookings_join(string $idStr) {
+    $user = require_auth();
+    $id = (int)$idStr;
+    $db = get_db();
+
+    $stmt = $db->prepare("SELECT * FROM fargny_bookings WHERE id = ? LIMIT 1");
+    $stmt->execute([$id]);
+    $booking = $stmt->fetch();
+    if (!$booking) json_error('Booking not found', 404);
+    if (!$booking['open_to_share']) json_error('This booking is not open to share', 403);
+    if ((int)$booking['user_id'] === (int)$user['id']) json_error('This is your own booking');
+
+    $linked = json_decode($booking['linked_user_ids'] ?? '[]', true) ?: [];
+    $linked = array_values(array_unique(array_map('intval', $linked)));
+    if (in_array((int)$user['id'], $linked, true)) json_error('You already joined this booking');
+
+    $linked[] = (int)$user['id'];
+    $db->prepare("UPDATE fargny_bookings SET linked_user_ids = ? WHERE id = ?")
+       ->execute([json_encode($linked), $id]);
+
+    json_success(['linked_user_ids' => $linked], 201);
+}
+
+function bookings_leave(string $idStr) {
+    $user = require_auth();
+    $id = (int)$idStr;
+    $db = get_db();
+
+    $stmt = $db->prepare("SELECT * FROM fargny_bookings WHERE id = ? LIMIT 1");
+    $stmt->execute([$id]);
+    $booking = $stmt->fetch();
+    if (!$booking) json_error('Booking not found', 404);
+
+    $linked = json_decode($booking['linked_user_ids'] ?? '[]', true) ?: [];
+    $linked = array_values(array_filter(array_map('intval', $linked),
+        fn($uid) => $uid !== (int)$user['id']));
+
+    $db->prepare("UPDATE fargny_bookings SET linked_user_ids = ? WHERE id = ?")
+       ->execute([json_encode($linked), $id]);
+
+    json_success(['linked_user_ids' => $linked]);
 }
 
 function bookings_calendar() {

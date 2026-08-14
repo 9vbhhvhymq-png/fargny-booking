@@ -33,8 +33,15 @@ function branches_list() {
     $memberMap = [];
     foreach ($members as $m) $memberMap[(int)$m['branch_id']] = (int)$m['member_count'];
 
-    // Get registered users grouped by branch
-    $users = $db->query("SELECT id, display_name, email, branch_id, is_admin FROM fargny_users ORDER BY display_name")->fetchAll();
+    // Get registered users grouped by branch. Family members are listed
+    // alongside the branch of the shareholder they are connected to.
+    ensure_role_columns();
+    $users = $db->query("
+        SELECT u.*, sh.full_name AS connected_shareholder_name
+        FROM fargny_users u
+        LEFT JOIN fargny_shareholders sh ON sh.id = u.connected_shareholder_id
+        ORDER BY u.display_name
+    ")->fetchAll();
     $usersByBranch = [];
     foreach ($users as $u) {
         $bid = (int)$u['branch_id'];
@@ -44,6 +51,8 @@ function branches_list() {
             'display_name' => $u['display_name'],
             'email'        => $u['email'],
             'is_admin'     => (bool)$u['is_admin'],
+            'role'         => user_role($u),
+            'connected_shareholder_name' => $u['connected_shareholder_name'] ?? null,
         ];
     }
 

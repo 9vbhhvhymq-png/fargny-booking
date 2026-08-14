@@ -39,7 +39,7 @@ function handle_board_events(string $action, string $id, string $method) {
 
 // Edit a special event. Only the creator or an admin may do this.
 function board_events_update(int $eventId) {
-    $user = require_auth();
+    $user = require_shareholder('Family members cannot edit special events');
     if (!$eventId) json_error('Event id required');
     $body = get_json_body();
     $db = get_db();
@@ -99,7 +99,7 @@ function board_events_update(int $eventId) {
 // Signups are removed with it (ON DELETE CASCADE), which also frees the
 // dates for regular bookings again.
 function board_events_delete(int $eventId) {
-    $user = require_auth();
+    $user = require_shareholder('Family members cannot cancel special events');
     if (!$eventId) json_error('Event id required');
     $db = get_db();
 
@@ -170,7 +170,7 @@ function board_events_list() {
             'description'     => $ev['description'],
             'creator_name'    => $ev['creator_name'],
             'created_by'      => $ev['created_by'] !== null ? (int)$ev['created_by'] : null,
-            'can_delete'      => $user
+            'can_delete'      => ($user && !is_family_member($user))
                                  ? (!empty($user['is_admin'])
                                     || ($ev['created_by'] !== null && (int)$ev['created_by'] === (int)$user['id']))
                                  : false,
@@ -185,9 +185,9 @@ function board_events_list() {
 }
 
 function board_events_create() {
-    // Special events: any logged-in user can create one. The creator is
-    // automatically signed up as the first participant.
-    $user = require_auth();
+    // Special events: any shareholder or admin can create one. The creator
+    // is automatically signed up as the first participant.
+    $user = require_shareholder('Family members cannot create special events');
     $body = get_json_body();
 
     $name  = trim($body['name'] ?? '');
