@@ -277,20 +277,22 @@ function bookings_create() {
         }
     }
 
-    // Regular: week must be within 6 months, max 7 nights
+    // Regular: arrival must fall inside the booking window, max 7 nights.
     if ($phase === 'regular' && !$isAdmin) {
         $weeks = generate_weeks($year);
         $week = null;
         foreach ($weeks as $w) {
             if ($w['id'] === $weekId) { $week = $w; break; }
         }
-        if ($week) {
-            $weekStart = new DateTime($week['start']);
-            $sixMonths = new DateTime();
-            $sixMonths->modify('+6 months');
-            if ($weekStart > $sixMonths) {
-                json_error('This week is not yet open for regular booking (6-month rule)');
-            }
+        $horizon = new DateTime();
+        $horizon->modify('+' . REGULAR_MONTHS_AHEAD . ' months');
+
+        // Check the date actually being reserved: with custom dates that is
+        // the chosen arrival, otherwise the start of the week.
+        $arrival = $checkIn ?: ($week['start'] ?? null);
+        if ($arrival && new DateTime($arrival) > $horizon) {
+            json_error('These dates are not yet open for regular booking — bookings open '
+                       . REGULAR_MONTHS_AHEAD . ' months ahead');
         }
         if ($checkIn && $checkOut) {
             $ci = new DateTime($checkIn);

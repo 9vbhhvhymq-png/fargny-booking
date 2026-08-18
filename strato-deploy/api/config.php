@@ -187,6 +187,10 @@ function require_admin(): array {
     return $user;
 }
 
+// How many months ahead regular bookings open. Mirrors
+// REGULAR_MONTHS_AHEAD in index.html — keep the two in step.
+if (!defined('REGULAR_MONTHS_AHEAD')) define('REGULAR_MONTHS_AHEAD', 3);
+
 // ---- Week generation (mirrors frontend logic) ----
 function generate_weeks(int $year): array {
     $weeks = [];
