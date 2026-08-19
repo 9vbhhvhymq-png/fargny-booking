@@ -141,6 +141,40 @@ const WEEK_START_DOW = 5;
 // A week is 7 nights: arrive on its start day, depart a week later. week.end
 // is the last night, so the departure date shown to members is end + 1 day.
 function weekDeparture(week){ if(!week) return ''; const d=parseISO(week.end); d.setDate(d.getDate()+1); return toISO(d); }
+
+// ---- "Via old calendar" -------------------------------------------------
+// A stay counts as an old-calendar booking only when it was NOT created in
+// the booking tool. Many stays also still sit in the shared Google Calendar
+// after being booked here; those are app bookings and must not be labelled
+// legacy. The tool never lets two different stays share a night, so a
+// Google Calendar entry overlapping an app booking is that same stay.
+function gcalNightRange(ev){
+  const s = ev && ev.start_date ? ev.start_date : ''; if(!s) return null;
+  const raw = ev.end_date || s;
+  if(raw > s) return [s, raw];
+  const d = parseISO(s); d.setDate(d.getDate()+1); return [s, toISO(d)];
+}
+function bookingNightRanges(bookings, weekFor){
+  const out = [];
+  (bookings||[]).forEach(b=>{
+    if(b.cancellation_status==='approved') return;
+    let s = b.check_in_date, e = b.check_out_date;
+    if(!s || !e){
+      const w = weekFor ? weekFor(b) : null;
+      if(w){ if(!s) s = w.start; if(!e) e = weekDeparture(w); }
+    }
+    if(s && e) out.push([s,e]);
+  });
+  return out;
+}
+function isLegacyGcal(ev, ranges){
+  const r = gcalNightRange(ev); if(!r) return false;
+  return !(ranges||[]).some(([s,e]) => r[0] < e && s < r[1]);
+}
+function legacyGcalOnly(gcalEvents, bookings, weekFor){
+  const ranges = bookingNightRanges(bookings, weekFor);
+  return (gcalEvents||[]).filter(ev=>isLegacyGcal(ev, ranges));
+}
 function generateWeeks(year) {
   const weeks=[]; let d=new Date(year,0,1);
   while(d.getDay()!==WEEK_START_DOW) d.setDate(d.getDate()+1);
@@ -638,10 +672,9 @@ function WeekRow({week, myBooking, allBookings=[], gcalEvents=[], boardEvents=[]
     else occupants.push({name:b.user_name,hidden:false,shared:!!b.open_to_share,
                          from:b.check_in_date,to:b.check_out_date,mine:b.user_id===user.id});
   });
-  (gcalEvents||[]).forEach(ev=>{
-    const es=ev.start_date||''; if(!es) return;
-    const raw=ev.end_date||es, ee=(raw>es)?raw:addDayISO(es,1);
-    if(es < weekDep && week.start < ee) occupants.push({name:ev.title||ev.summary||'—',gcal:true});
+  legacyGcalOnly(gcalEvents, allBookings, ()=>week).forEach(ev=>{
+    const r = gcalNightRange(ev); if(!r) return;
+    if(r[0] < weekDep && week.start < r[1]) occupants.push({name:ev.title||'—',gcal:true});
   });
   const barColor = hasMyBooking&&myBooking.open_to_share ? COLORS.openToShare : (userBranch?userBranch.color:'#ccc');
   const pm = hasMyBooking ? getPhaseMeta(myBooking.phase,t) : null;
@@ -782,7 +815,9 @@ function BookingView({user, bookings=[], myBookings=[], weeks, year, setYear, ph
             // name as a whole word) to avoid claiming someone else's stay.
             const myNames = (user.display_name||'').trim().toLowerCase();
             const firstName = myNames.split(/\s+/)[0]||'';
-            const myGcal = (gcalEvents||[]).filter(ev=>{
+            const myGcal = legacyGcalOnly(gcalEvents, myBookings,
+                b=>{const bw=(b.year||year)===year?weeks:generateWeeks(b.year||year);return bw.find(wk=>wk.id===b.week_id);}
+              ).filter(ev=>{
               const title=(ev.title||'').toLowerCase(); if(!title||!myNames) return false;
               if(title.includes(myNames)) return true;
               return firstName.length>2 && new RegExp('(^|[^a-z])'+firstName+'([^a-z]|$)','i').test(title);
@@ -954,8 +989,11 @@ function CalendarView({bookings=[], weeks, year, boardEvents=[], gcalEvents=[], 
   const calWeeks = calYear===year ? weeks : generateWeeks(calYear);
   const allItems = bookings.map(b=>{const w=calWeeks.find(wk=>wk.id===b.week_id);return{type:'booking',data:b,start:b.check_in_date||(w?w.start:''),end:b.check_out_date||(w?w.end:'')};});
   (boardEvents||[]).forEach(ev=>{allItems.push({type:'board',data:ev,start:ev.start_date,end:ev.end_date});});
-  // Merge in Google Calendar (legacy) events — read-only, shown in grey
-  (gcalEvents||[]).forEach((ev,idx)=>{allItems.push({type:'gcal',data:{...ev,_key:ev.uid||('gcal_'+idx)},start:ev.start_date,end:ev.end_date});});
+  // Merge in Google Calendar events that are NOT already app bookings —
+  // read-only, shown in grey. A stay booked here that also lives in the
+  // shared calendar is shown once, as the app booking it is.
+  legacyGcalOnly(gcalEvents, bookings, b=>calWeeks.find(wk=>wk.id===b.week_id))
+    .forEach((ev,idx)=>{allItems.push({type:'gcal',data:{...ev,_key:ev.uid||('gcal_'+idx)},start:ev.start_date,end:ev.end_date});});
 
   const dayBookings = {};
   for(let dd=1;dd<=daysInMonth;dd++){
