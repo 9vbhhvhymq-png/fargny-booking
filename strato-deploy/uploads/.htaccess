@@ -1,0 +1,32 @@
+# Fargny Booking — profile photo uploads
+#
+# Everything in here is written from user uploads, so nothing in this
+# directory may ever be executed. A single uploaded .php would otherwise
+# be remote code execution on the shared host.
+
+# 1. Never hand these files to a script engine, whatever the extension.
+<FilesMatch "\.(php|php3|php4|php5|php7|php8|phps|phtml|phar|pl|py|cgi|sh|htaccess)$">
+    Order Allow,Deny
+    Deny from all
+</FilesMatch>
+
+# 2. Belt and braces: turn the handlers off for this directory outright,
+#    in case a FilesMatch above is bypassed by an unusual extension.
+<IfModule mod_php7.c>
+    php_flag engine off
+</IfModule>
+<IfModule mod_php.c>
+    php_flag engine off
+</IfModule>
+RemoveHandler .php .phtml .php3 .php4 .php5 .php7 .php8 .phar
+RemoveType .php .phtml .php3 .php4 .php5 .php7 .php8 .phar
+AddType text/plain .php .phtml .phar
+
+# 3. Only serve the image types we actually write.
+<FilesMatch "\.(jpg|jpeg|png|webp|gif)$">
+    Order Allow,Deny
+    Allow from all
+</FilesMatch>
+
+# 4. No directory listing.
+Options -Indexes

@@ -122,8 +122,11 @@ function board_events_delete(int $eventId) {
 }
 
 function board_events_list() {
+    // Participant lists carry names and emails, so this is members-only.
+    // The public calendar renders events from bookings/public-calendar,
+    // which does not include participants.
+    $user = require_auth();
     $db = get_db();
-    $user = get_auth_user(); // May be null for public access
 
     $events = $db->query("
         SELECT be.*,

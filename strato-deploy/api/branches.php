@@ -20,6 +20,8 @@ function handle_branches(string $action, string $method) {
 }
 
 function branches_list() {
+    // Member names, emails and branches are family data: never anonymous.
+    require_auth();
     $db = get_db();
 
     $branches = $db->query("SELECT id, name, color FROM fargny_branches ORDER BY id")->fetchAll();

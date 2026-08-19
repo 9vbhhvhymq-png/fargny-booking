@@ -10,6 +10,8 @@
 
 function handle_google_calendar(string $action, string $method) {
     if ($method !== 'GET') json_error('GET required', 405);
+    // Legacy calendar entries name who stayed when — members only.
+    require_auth();
     gcal_fetch();
 }
 

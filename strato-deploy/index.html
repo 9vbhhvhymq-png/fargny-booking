@@ -48,6 +48,24 @@
 const _pageBase = new URL('.', window.location.href).href.replace(/\/$/, '');
 const API_BASE = _pageBase + '/api';
 
+// Multipart upload. Deliberately does not set Content-Type: the browser
+// has to add its own multipart boundary.
+async function apiUpload(path, formData) {
+  const token = localStorage.getItem('fargny_token');
+  const headers = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const res = await fetch(`${API_BASE}/${path}`, { method: 'POST', headers, body: formData });
+  const text = await res.text();
+  let data;
+  try { data = text ? JSON.parse(text) : null; }
+  catch (e) {
+    console.error('[Fargny] Invalid JSON from', path, '->', text.slice(0, 500));
+    throw new Error('Server returned invalid response (HTTP ' + res.status + ')');
+  }
+  if (!data || !data.success) throw new Error((data && data.error) || 'Upload failed');
+  return data.data;
+}
+
 async function api(path, options = {}) {
   const token = localStorage.getItem('fargny_token');
   const headers = { 'Content-Type': 'application/json' };
@@ -108,13 +126,13 @@ const T = {
   en: {
     appName:"Fargny",subtitle:"Holiday House Booking",signIn:"Sign In",register:"Register",email:"Email address",password:"Password",confirmPassword:"Confirm password",fillAll:"Please fill in all fields",invalidEmail:"Please enter a valid email",pickShareholder:"Select your name",createAccount:"Create Account",nameTaken:"This person has already registered",invalidLogin:"Invalid email or password",passwordMismatch:"Passwords do not match",signOut:"Sign Out",weeksBooked:"weeks booked",book:"Book",calendar:"Calendar",statistics:"Statistics",bookingPhase:"Booking Phase",year:"Year",myBookings:"My Bookings",noBookingsYet:"No bookings yet",familyBranches:"Family Branches",clickBranch:"Click a branch to see its members",all:"All",noWeeks:"No weeks available",bookBtn:"Book",cancelBtn:"Cancel",yourBooking:"Your booking",branchAlreadyBooked:"Your branch already booked a week",youAlreadyBooked:"You already booked a week",booked:"Booked",available:"Available",doubleBooking:"Double booking",noMembers:"No members registered yet",membersRegistered:"members registered",memberRegistered:"member registered",close:"Close",admin:"Admin",adminTitle:"Admin Panel",adminDesc:"Manage bookings, cancellations & payments",owner:"Owner",pickOwner:"Choose an owner...",phase:"Phase",week:"Week",pickWeek:"Choose a week...",clanName:"Clan Booking",clanDesc:"Each family branch picks one week",clanRule:"One week per family branch",priorityName:"Priority Booking",priorityDesc:"Each owner picks one week",priorityRule:"One week per owner",regularName:"Regular Booking",regularDesc:"Book as much as you like",regularRule:"Bookable 3 months ahead, all year round",hiddenCalNote:"Clan and Priority bookings are not yet revealed. Only your own and Regular bookings are shown.",adminBooking:"via admin",bookOnBehalf:"Book on behalf",loading:"Loading...",emailTab:"Paste Email",manualTab:"Manual",pasteEmail:"Paste the email here...",parseEmail:"Parse Email",parsing:"Reading email...",parsedResult:"Parsed from email",noMatch:"Could not match a registered owner",weekNotFound:"Could not identify the requested week",parseError:"Could not parse the email.",confirmBooking:"Confirm Booking",parsedName:"Detected name",parsedWeek:"Requested week",feedback:"Feedback",active:"Active",opens:"Opens",closed:"Closed",weekNotYetOpen:"Opens for booking on",weekBookedByOther:"Already booked",confirmationEmailSent:"A confirmation email will be sent to",requestCancel:"Request cancellation",pendingCancellation:"Cancellation pending",cancelRequested:"Cancellation requested",approveCancellation:"Approve",rejectCancellation:"Reject",pendingCancellations:"Pending Cancellations",cancellationsTab:"Cancellations",paymentsTab:"Payments",noPendingCancellations:"No pending cancellations",statsTitle:"Booking Statistics",bookingsPerUser:"Bookings per user",bookingsPerBranch:"Bookings per branch",overallOccupancy:"Overall occupancy",bookingTimeline:"Booking timeline",totalWeeks:"Total weeks",bookedWeeks:"Booked weeks",availableWeeks:"Available weeks",userName:"User",branchLabel:"Branch",total:"Total",lastLogin:"Last login",adminOnly:"Admin access required",noData:"No data available",mon:"Mon",tue:"Tue",wed:"Wed",thu:"Thu",fri:"Fri",sat:"Sat",sun:"Sun",
     costs:"Costs",houseFee:"House fee",perNight:"per night",perPerson:"Per person",cleaningFee:"Cleaning fee",includeCleaning:"Include final cleaning (\u20AC70)",totalCost:"Total",notPaid:"Not paid",invoiceSent:"Invoice sent",paid:"Paid",child04:"Children 0\u20134 (free)",child59:"Children 5\u20139",adult:"10 years and older",nights:"nights",nightLabel:"Night",saveCosts:"Save",costSummary:"Cost summary",paymentStatus:"Payment status",paymentOverview:"Payment overview",amount:"Amount",filterUnpaid:"Show unpaid only",allPayments:"All",whatsappHelp:"Need help?",bankInstructions:"Transfer the amount to penningmeester@fargny.org \u2014 you will receive an invoice with payment request.",
-    openToShare:"I am open to have other people join me",contactPerson:"Contact",addRemark:"Add a remark (optional)",remarkLabel:"Remark",whoJoining:"Who is joining you?",confirmBookQ:"Are you sure you want to book",yesBook:"Yes, book",checkIn:"Check-in",checkOut:"Check-out",maxNights:"Maximum 7 nights",customDates:"Custom dates",makeShare:"Open to share",makePrivate:"Make private",sharedUpdated:"Booking updated",joinSpecialEvent:"Join special event",presetWeek:"Full week",presetWeekend:"Weekend (Fri\u2013Mon)",presetMidweek:"Midweek (Mon\u2013Fri)",nightLabel:"night",nightsLabel:"nights",bookedBy:"Booked by",bookingsTab:"Bookings",adminNote:"Note to the member (optional)",adminNoteHint:"Explain why this booking was changed...",noteEmailed:"Sent by email to",deleteReasonPrompt:"Reason for cancelling (emailed to the member). Leave empty to send none —",deleteBooking:"Delete",confirmDeleteBooking:"Delete this booking permanently? This cannot be undone and the dates become available again.",bookingDeleted:"Booking deleted",bookingUpdated:"Booking updated",departAfterArrive:"Departure must be after arrival",viaOldCalendar:"Via old calendar",reservedForEvent:"Reserved for a special event",newPassword:"New password",setNewPassword:"Set new password",resetDone:"Password updated — you can sign in now",resetLinkInvalid:"This reset link is invalid or has expired",passwordMin:"Password must be at least 8 characters",resetIntro:"Enter your email address and we'll send you a link to choose a new password.",stillStuck:"Still stuck? Message Moritz",cancelEvent:"Cancel event",familyMember:"Family Member",familyBadge:"Family",notShareholder:"Not a shareholder? Join as family member",backToShareholder:"Register as shareholder instead",connectedToWho:"Connected to which shareholder?",pickConnected:"Choose a shareholder...",fullNameLabel:"Full name",connectedTo:"Connected to",cannotBookFamily:"Family members cannot create bookings",joinBooking:"Join",leaveBooking:"Leave",joinedBooking:"You joined this booking",leftBooking:"You left this booking",openToShareWeek:"Open to share",roleLabel:"Role",roleAdmin:"Admin",roleShareholder:"Shareholder",roleFamily:"Family member",changeRole:"Change role",filterAll:"All",filterAdmins:"Admins",filterShareholders:"Shareholders",filterFamily:"Family Members",roleUpdated:"Role updated",readOnlyNote:"You can view bookings but only shareholders can book.",editEvent:"Edit",saveEvent:"Save changes",eventUpdated:"Event updated",endBeforeStart:"End date must be on or after the start date",confirmCancelEvent:"Cancel this special event? Everyone signed up will be removed and the dates become bookable again.",eventCancelled:"Special event cancelled",
+    openToShare:"I am open to have other people join me",contactPerson:"Contact",addRemark:"Add a remark (optional)",remarkLabel:"Remark",whoJoining:"Who is joining you?",confirmBookQ:"Are you sure you want to book",yesBook:"Yes, book",checkIn:"Check-in",checkOut:"Check-out",maxNights:"Maximum 7 nights",customDates:"Custom dates",makeShare:"Open to share",makePrivate:"Make private",sharedUpdated:"Booking updated",joinSpecialEvent:"Join special event",presetWeek:"Full week",presetWeekend:"Weekend (Fri\u2013Mon)",presetMidweek:"Midweek (Mon\u2013Fri)",nightLabel:"night",nightsLabel:"nights",bookedBy:"Booked by",bookingsTab:"Bookings",adminNote:"Note to the member (optional)",adminNoteHint:"Explain why this booking was changed...",noteEmailed:"Sent by email to",deleteReasonPrompt:"Reason for cancelling (emailed to the member). Leave empty to send none —",deleteBooking:"Delete",confirmDeleteBooking:"Delete this booking permanently? This cannot be undone and the dates become available again.",bookingDeleted:"Booking deleted",bookingUpdated:"Booking updated",departAfterArrive:"Departure must be after arrival",viaOldCalendar:"Via old calendar",reservedForEvent:"Reserved for a special event",newPassword:"New password",setNewPassword:"Set new password",resetDone:"Password updated — you can sign in now",resetLinkInvalid:"This reset link is invalid or has expired",passwordMin:"Password must be at least 8 characters",resetIntro:"Enter your email address and we'll send you a link to choose a new password.",stillStuck:"Still stuck? Message Moritz",cancelEvent:"Cancel event",familyMember:"Family Member",family:"Family",myProfile:"My profile",directory:"Directory",editProfile:"Edit my profile",previewAsOthers:"See it as others do",backToMyView:"Back to my view",noProfileYet:"No profile yet",profilePhoto:"Photo",uploadPhoto:"Upload a photo",removePhoto:"Remove photo",photoHint:"JPEG, PNG or WebP, up to 5 MB",bioLabel:"A line about yourself",bioHint:"Kept short on purpose",charsLeft:"characters left",phoneLabel:"Phone",countryCode:"Country",homeTownLabel:"Home town",languagesLabel:"Languages",householdLabel:"Usually travels with",people:"people",prefStayLabel:"Preferred stay",prefSeasonLabel:"Favourite season",stayWeek:"A full week",stayMidweek:"Midweek",stayWeekend:"A weekend",stayNone:"No preference",seasonSpring:"Spring",seasonSummer:"Summer",seasonAutumn:"Autumn",seasonWinter:"Winter",seasonAny:"Any time",skillsLabel:"Happy to help with",skillGarden:"Garden",skillMaintenance:"Maintenance",skillCooking:"Cooking",skillPruning:"Pruning",skillCleaning:"Cleaning",shareDefaultLabel:"Tick \u201Copen to share\u201D on new bookings by default",whoSeesWhat:"Who can see what",visPhotoBio:"Photo and bio",visPhone:"Phone and email",visTown:"Home town",visStays:"My stay history",visNote:"Visible to logged-in family only. Never on the public calendar.",saveProfile:"Save profile",profileSaved:"Profile saved",photoRemoved:"Photo removed",staysTitle:"Stays",upcomingStay:"Upcoming",showEarlier:"Show %n earlier",showFewer:"Show fewer",totalStays:"Stays",totalNights:"Nights",firstVisit:"First visit",noStaysYet:"No stays recorded yet",staysPrivate:"This member keeps their stay history private",searchMembers:"Search name, town or skill...",filterBranch:"Branch",openToShareFilter:"Open to share",noMembersFound:"No members match that search",messageWhatsApp:"WhatsApp",messageEmail:"Email",familyBadge:"Family",notShareholder:"Not a shareholder? Join as family member",backToShareholder:"Register as shareholder instead",connectedToWho:"Connected to which shareholder?",pickConnected:"Choose a shareholder...",fullNameLabel:"Full name",connectedTo:"Connected to",cannotBookFamily:"Family members cannot create bookings",joinBooking:"Join",leaveBooking:"Leave",joinedBooking:"You joined this booking",leftBooking:"You left this booking",openToShareWeek:"Open to share",roleLabel:"Role",roleAdmin:"Admin",roleShareholder:"Shareholder",roleFamily:"Family member",changeRole:"Change role",filterAll:"All",filterAdmins:"Admins",filterShareholders:"Shareholders",filterFamily:"Family Members",roleUpdated:"Role updated",readOnlyNote:"You can view bookings but only shareholders can book.",editEvent:"Edit",saveEvent:"Save changes",eventUpdated:"Event updated",endBeforeStart:"End date must be on or after the start date",confirmCancelEvent:"Cancel this special event? Everyone signed up will be removed and the dates become bookable again.",eventCancelled:"Special event cancelled",
     boardBookings:"Special Events",boardDesc:"Create or join Fargny special events",boardRule:"Anyone can create or join",specialWeekends:"Special events",signUp:"Sign up",signedUp:"Signed up",cancelSignup:"Cancel signup",participants:"participants",boardEventsTab:"Special Events",createBoardEvent:"Create your special event",createdBy:"Created by",eventName:"Event name",eventDesc:"Description",eventStart:"Start date",eventEnd:"End date",noEvents:"No upcoming special events",boardTab:"Events",newEventBtn:"New event",viaOldCalendar:"Via old calendar",userManagement:"User Management",makeAdmin:"Make admin",removeAdmin:"Remove admin",adminTab:"Admin",downloadData:"Download CSV",loadingCalendar:"Checking existing calendar\u2026",bookedInGcal:"This week is already booked via the existing calendar",bookingConfirmed:"Your booking has been confirmed. You will receive a payment request separately. In case of questions, send an email to penningmeester@fargny.org",dropdownNote:"Don't see your name? You may already be registered. Try signing in.",forgotPassword:"Forgot password?",resetPasswordTitle:"Reset password",resetPasswordSent:"If that email is registered, a reset link has been sent.",contactToReset:"Please contact Moritz to reset your password",backToLogin:"Back to sign in",sendResetLink:"Send reset link",confirmDates:"You will book:",maxParticipants:"Maximum participants",maxParticipantsHint:"Leave blank for unlimited",eventFull:"Full",viewDetails:"View details",eventDetails:"Event details",
   },
   nl: {
     appName:"Fargny",subtitle:"Vakantiehuis Boekingssysteem",signIn:"Inloggen",register:"Registreren",email:"E-mailadres",password:"Wachtwoord",confirmPassword:"Wachtwoord bevestigen",fillAll:"Vul alle velden in",invalidEmail:"Voer een geldig e-mailadres in",pickShareholder:"Selecteer je naam",createAccount:"Account aanmaken",nameTaken:"Deze persoon is al geregistreerd",invalidLogin:"Ongeldig e-mailadres of wachtwoord",passwordMismatch:"Wachtwoorden komen niet overeen",signOut:"Uitloggen",weeksBooked:"weken geboekt",book:"Boeken",calendar:"Kalender",statistics:"Statistieken",bookingPhase:"Boekingsfase",year:"Jaar",myBookings:"Mijn Boekingen",noBookingsYet:"Nog geen boekingen",familyBranches:"Stammen",clickBranch:"Klik op een stam om de leden te zien",all:"Alle",noWeeks:"Geen weken beschikbaar",bookBtn:"Boeken",cancelBtn:"Annuleren",yourBooking:"Jouw boeking",branchAlreadyBooked:"Je stam heeft al een week geboekt",youAlreadyBooked:"Je hebt al een week geboekt",booked:"Geboekt",available:"Beschikbaar",doubleBooking:"Dubbele boeking",noMembers:"Nog geen leden geregistreerd",membersRegistered:"leden geregistreerd",memberRegistered:"lid geregistreerd",close:"Sluiten",admin:"Beheerder",adminTitle:"Beheerderspaneel",adminDesc:"Beheer boekingen, annuleringen & betalingen",owner:"Eigenaar",pickOwner:"Kies een eigenaar...",phase:"Fase",week:"Week",pickWeek:"Kies een week...",clanName:"Stamboeking",clanDesc:"Elke stam kiest een week",clanRule:"E\u00e9n week per stam",priorityName:"Prioriteitsboeking",priorityDesc:"Elke eigenaar kiest een week",priorityRule:"E\u00e9n week per eigenaar",regularName:"Reguliere Boeking",regularDesc:"Boek zoveel als je wilt",regularRule:"Boekbaar 3 maanden vooruit, hele jaar",hiddenCalNote:"Stam- en prioriteitsboekingen zijn nog niet onthuld. Alleen je eigen en reguliere boekingen worden getoond.",adminBooking:"via beheerder",bookOnBehalf:"Namens iemand boeken",loading:"Laden...",emailTab:"Email plakken",manualTab:"Handmatig",pasteEmail:"Plak hier de email...",parseEmail:"Email lezen",parsing:"Email wordt gelezen...",parsedResult:"Uit email gehaald",noMatch:"Kon geen geregistreerde eigenaar vinden",weekNotFound:"Kon de gevraagde week niet herkennen",parseError:"Kon de email niet verwerken.",confirmBooking:"Boeking bevestigen",parsedName:"Herkende naam",parsedWeek:"Gevraagde week",feedback:"Feedback",active:"Actief",opens:"Opent",closed:"Gesloten",weekNotYetOpen:"Opent voor boeking op",weekBookedByOther:"Al geboekt",confirmationEmailSent:"Er wordt een bevestigingsmail gestuurd naar",requestCancel:"Annulering aanvragen",pendingCancellation:"Annulering in behandeling",cancelRequested:"Annulering aangevraagd",approveCancellation:"Goedkeuren",rejectCancellation:"Afwijzen",pendingCancellations:"Openstaande annuleringen",cancellationsTab:"Annuleringen",paymentsTab:"Betalingen",noPendingCancellations:"Geen openstaande annuleringen",statsTitle:"Boekingsstatistieken",bookingsPerUser:"Boekingen per gebruiker",bookingsPerBranch:"Boekingen per stam",overallOccupancy:"Totale bezetting",bookingTimeline:"Boekingstijdlijn",totalWeeks:"Totaal weken",bookedWeeks:"Geboekte weken",availableWeeks:"Beschikbare weken",userName:"Gebruiker",branchLabel:"Stam",total:"Totaal",lastLogin:"Laatste login",adminOnly:"Beheerdertoegang vereist",noData:"Geen gegevens beschikbaar",mon:"Ma",tue:"Di",wed:"Wo",thu:"Do",fri:"Vr",sat:"Za",sun:"Zo",
     costs:"Kosten",houseFee:"Huiskosten",perNight:"per nacht",perPerson:"Per persoon",cleaningFee:"Schoonmaakkosten",includeCleaning:"Eindschoonmaak toevoegen (\u20AC70)",totalCost:"Totaal",notPaid:"Niet betaald",invoiceSent:"Factuur verstuurd",paid:"Betaald",child04:"Kinderen 0\u20134 (gratis)",child59:"Kinderen 5\u20139",adult:"10 jaar en ouder",nights:"nachten",nightLabel:"Nacht",saveCosts:"Opslaan",costSummary:"Kostenoverzicht",paymentStatus:"Betaalstatus",paymentOverview:"Betalingsoverzicht",amount:"Bedrag",filterUnpaid:"Alleen onbetaald",allPayments:"Alle",whatsappHelp:"Hulp nodig?",bankInstructions:"Maak het bedrag over naar penningmeester@fargny.org \u2014 je ontvangt een factuur met betaalverzoek.",
-    openToShare:"Ik sta open om andere mensen te laten aansluiten",contactPerson:"Contact",addRemark:"Opmerking toevoegen (optioneel)",remarkLabel:"Opmerking",whoJoining:"Wie gaat er mee?",confirmBookQ:"Weet je zeker dat je wilt boeken",yesBook:"Ja, boeken",checkIn:"Inchecken",checkOut:"Uitchecken",maxNights:"Maximaal 7 nachten",customDates:"Aangepaste data",makeShare:"Openstellen",makePrivate:"Privé maken",sharedUpdated:"Boeking bijgewerkt",joinSpecialEvent:"Doe mee met evenement",presetWeek:"Hele week",presetWeekend:"Weekend (vr\u2013ma)",presetMidweek:"Midweek (ma\u2013vr)",nightLabel:"nacht",nightsLabel:"nachten",bookedBy:"Geboekt door",bookingsTab:"Boekingen",adminNote:"Notitie aan het lid (optioneel)",adminNoteHint:"Leg uit waarom deze boeking is gewijzigd...",noteEmailed:"Per e-mail verstuurd naar",deleteReasonPrompt:"Reden voor annulering (wordt gemaild naar het lid). Laat leeg om geen reden te sturen —",deleteBooking:"Verwijderen",confirmDeleteBooking:"Deze boeking definitief verwijderen? Dit kan niet ongedaan worden gemaakt en de data komen weer vrij.",bookingDeleted:"Boeking verwijderd",bookingUpdated:"Boeking bijgewerkt",departAfterArrive:"Vertrek moet na aankomst liggen",viaOldCalendar:"Via oude kalender",reservedForEvent:"Gereserveerd voor een speciaal evenement",newPassword:"Nieuw wachtwoord",setNewPassword:"Wachtwoord instellen",resetDone:"Wachtwoord bijgewerkt — je kunt nu inloggen",resetLinkInvalid:"Deze herstel-link is ongeldig of verlopen",passwordMin:"Wachtwoord moet minstens 8 tekens zijn",resetIntro:"Vul je e-mailadres in en we sturen je een link om een nieuw wachtwoord te kiezen.",stillStuck:"Lukt het niet? Stuur Moritz een bericht",cancelEvent:"Evenement annuleren",familyMember:"Familielid",familyBadge:"Familie",notShareholder:"Geen aandeelhouder? Meld je aan als familielid",backToShareholder:"Toch registreren als aandeelhouder",connectedToWho:"Verbonden met welke aandeelhouder?",pickConnected:"Kies een aandeelhouder...",fullNameLabel:"Volledige naam",connectedTo:"Verbonden met",cannotBookFamily:"Familieleden kunnen geen boekingen maken",joinBooking:"Aansluiten",leaveBooking:"Afmelden",joinedBooking:"Je bent aangesloten bij deze boeking",leftBooking:"Je hebt je afgemeld",openToShareWeek:"Open om te delen",roleLabel:"Rol",roleAdmin:"Beheerder",roleShareholder:"Aandeelhouder",roleFamily:"Familielid",changeRole:"Rol wijzigen",filterAll:"Alle",filterAdmins:"Beheerders",filterShareholders:"Aandeelhouders",filterFamily:"Familieleden",roleUpdated:"Rol bijgewerkt",readOnlyNote:"Je kunt boekingen bekijken, maar alleen aandeelhouders kunnen boeken.",editEvent:"Bewerken",saveEvent:"Wijzigingen opslaan",eventUpdated:"Evenement bijgewerkt",endBeforeStart:"Einddatum moet op of na de startdatum liggen",confirmCancelEvent:"Dit speciale evenement annuleren? Alle aanmeldingen vervallen en de data worden weer boekbaar.",eventCancelled:"Speciaal evenement geannuleerd",
+    openToShare:"Ik sta open om andere mensen te laten aansluiten",contactPerson:"Contact",addRemark:"Opmerking toevoegen (optioneel)",remarkLabel:"Opmerking",whoJoining:"Wie gaat er mee?",confirmBookQ:"Weet je zeker dat je wilt boeken",yesBook:"Ja, boeken",checkIn:"Inchecken",checkOut:"Uitchecken",maxNights:"Maximaal 7 nachten",customDates:"Aangepaste data",makeShare:"Openstellen",makePrivate:"Privé maken",sharedUpdated:"Boeking bijgewerkt",joinSpecialEvent:"Doe mee met evenement",presetWeek:"Hele week",presetWeekend:"Weekend (vr\u2013ma)",presetMidweek:"Midweek (ma\u2013vr)",nightLabel:"nacht",nightsLabel:"nachten",bookedBy:"Geboekt door",bookingsTab:"Boekingen",adminNote:"Notitie aan het lid (optioneel)",adminNoteHint:"Leg uit waarom deze boeking is gewijzigd...",noteEmailed:"Per e-mail verstuurd naar",deleteReasonPrompt:"Reden voor annulering (wordt gemaild naar het lid). Laat leeg om geen reden te sturen —",deleteBooking:"Verwijderen",confirmDeleteBooking:"Deze boeking definitief verwijderen? Dit kan niet ongedaan worden gemaakt en de data komen weer vrij.",bookingDeleted:"Boeking verwijderd",bookingUpdated:"Boeking bijgewerkt",departAfterArrive:"Vertrek moet na aankomst liggen",viaOldCalendar:"Via oude kalender",reservedForEvent:"Gereserveerd voor een speciaal evenement",newPassword:"Nieuw wachtwoord",setNewPassword:"Wachtwoord instellen",resetDone:"Wachtwoord bijgewerkt — je kunt nu inloggen",resetLinkInvalid:"Deze herstel-link is ongeldig of verlopen",passwordMin:"Wachtwoord moet minstens 8 tekens zijn",resetIntro:"Vul je e-mailadres in en we sturen je een link om een nieuw wachtwoord te kiezen.",stillStuck:"Lukt het niet? Stuur Moritz een bericht",cancelEvent:"Evenement annuleren",familyMember:"Familielid",family:"Familie",myProfile:"Mijn profiel",directory:"Ledenlijst",editProfile:"Mijn profiel bewerken",previewAsOthers:"Bekijk zoals anderen het zien",backToMyView:"Terug naar mijn weergave",noProfileYet:"Nog geen profiel",profilePhoto:"Foto",uploadPhoto:"Foto uploaden",removePhoto:"Foto verwijderen",photoHint:"JPEG, PNG of WebP, max 5 MB",bioLabel:"Een regel over jezelf",bioHint:"Bewust kort",charsLeft:"tekens over",phoneLabel:"Telefoon",countryCode:"Land",homeTownLabel:"Woonplaats",languagesLabel:"Talen",householdLabel:"Reist meestal met",people:"personen",prefStayLabel:"Voorkeursverblijf",prefSeasonLabel:"Favoriet seizoen",stayWeek:"Een hele week",stayMidweek:"Midweek",stayWeekend:"Een weekend",stayNone:"Geen voorkeur",seasonSpring:"Lente",seasonSummer:"Zomer",seasonAutumn:"Herfst",seasonWinter:"Winter",seasonAny:"Maakt niet uit",skillsLabel:"Help graag met",skillGarden:"Tuin",skillMaintenance:"Onderhoud",skillCooking:"Koken",skillPruning:"Snoeien",skillCleaning:"Schoonmaak",shareDefaultLabel:"Vink \u201Copenstellen\u201D standaard aan bij nieuwe boekingen",whoSeesWhat:"Wie ziet wat",visPhotoBio:"Foto en bio",visPhone:"Telefoon en e-mail",visTown:"Woonplaats",visStays:"Mijn verblijfshistorie",visNote:"Alleen zichtbaar voor ingelogde familie. Nooit op de publieke kalender.",saveProfile:"Profiel opslaan",profileSaved:"Profiel opgeslagen",photoRemoved:"Foto verwijderd",staysTitle:"Verblijven",upcomingStay:"Aankomend",showEarlier:"Toon %n eerdere",showFewer:"Toon minder",totalStays:"Verblijven",totalNights:"Nachten",firstVisit:"Eerste bezoek",noStaysYet:"Nog geen verblijven",staysPrivate:"Dit lid houdt de verblijfshistorie priv\u00e9",searchMembers:"Zoek op naam, plaats of vaardigheid...",filterBranch:"Stam",openToShareFilter:"Openstaand",noMembersFound:"Geen leden gevonden",messageWhatsApp:"WhatsApp",messageEmail:"E-mail",familyBadge:"Familie",notShareholder:"Geen aandeelhouder? Meld je aan als familielid",backToShareholder:"Toch registreren als aandeelhouder",connectedToWho:"Verbonden met welke aandeelhouder?",pickConnected:"Kies een aandeelhouder...",fullNameLabel:"Volledige naam",connectedTo:"Verbonden met",cannotBookFamily:"Familieleden kunnen geen boekingen maken",joinBooking:"Aansluiten",leaveBooking:"Afmelden",joinedBooking:"Je bent aangesloten bij deze boeking",leftBooking:"Je hebt je afgemeld",openToShareWeek:"Open om te delen",roleLabel:"Rol",roleAdmin:"Beheerder",roleShareholder:"Aandeelhouder",roleFamily:"Familielid",changeRole:"Rol wijzigen",filterAll:"Alle",filterAdmins:"Beheerders",filterShareholders:"Aandeelhouders",filterFamily:"Familieleden",roleUpdated:"Rol bijgewerkt",readOnlyNote:"Je kunt boekingen bekijken, maar alleen aandeelhouders kunnen boeken.",editEvent:"Bewerken",saveEvent:"Wijzigingen opslaan",eventUpdated:"Evenement bijgewerkt",endBeforeStart:"Einddatum moet op of na de startdatum liggen",confirmCancelEvent:"Dit speciale evenement annuleren? Alle aanmeldingen vervallen en de data worden weer boekbaar.",eventCancelled:"Speciaal evenement geannuleerd",
     boardBookings:"Speciale Evenementen",boardDesc:"Maak of meld je aan voor Fargny evenementen",boardRule:"Iedereen kan aanmaken of meedoen",specialWeekends:"Speciale evenementen",signUp:"Aanmelden",signedUp:"Aangemeld",cancelSignup:"Afmelden",participants:"deelnemers",boardEventsTab:"Speciale Evenementen",createBoardEvent:"Maak je eigen evenement aan",createdBy:"Aangemaakt door",eventName:"Evenementnaam",eventDesc:"Beschrijving",eventStart:"Startdatum",eventEnd:"Einddatum",noEvents:"Geen aankomende speciale evenementen",boardTab:"Evenementen",newEventBtn:"Nieuw evenement",viaOldCalendar:"Via oude kalender",userManagement:"Gebruikersbeheer",makeAdmin:"Maak beheerder",removeAdmin:"Beheerder verwijderen",adminTab:"Beheerder",downloadData:"CSV downloaden",loadingCalendar:"Bestaande kalender controleren\u2026",bookedInGcal:"Deze week is al geboekt via de bestaande kalender",bookingConfirmed:"Je boeking is bevestigd. Je ontvangt apart een betaalverzoek. Bij vragen kun je een e-mail sturen naar penningmeester@fargny.org",dropdownNote:"Naam niet zichtbaar? Je bent mogelijk al geregistreerd. Probeer in te loggen.",forgotPassword:"Wachtwoord vergeten?",resetPasswordTitle:"Wachtwoord herstellen",resetPasswordSent:"Als dat e-mailadres is geregistreerd, is er een herstel-link verstuurd.",contactToReset:"Neem contact op met Moritz om je wachtwoord te herstellen",backToLogin:"Terug naar inloggen",sendResetLink:"Stuur herstel-link",confirmDates:"Je gaat boeken:",maxParticipants:"Maximaal aantal deelnemers",maxParticipantsHint:"Laat leeg voor onbeperkt",eventFull:"Vol",viewDetails:"Bekijk details",eventDetails:"Evenementdetails",
   },
 };
@@ -275,7 +293,7 @@ function Toast({message}){
 // ═══════════════════════════════════════════════════════
 // BRANCH MEMBERS PANEL
 // ═══════════════════════════════════════════════════════
-function BranchMembersPanel({branch, onClose, t, members=[]}){
+function BranchMembersPanel({branch, onClose, t, members=[], onOpenProfile}){
   return (
     <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.3)',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center'}} onClick={onClose}>
       <div onClick={e=>e.stopPropagation()} style={{background:COLORS.white,borderRadius:16,padding:28,width:360,maxHeight:'70vh',overflow:'auto',boxShadow:'0 12px 48px rgba(0,0,0,0.15)'}}>
@@ -286,8 +304,8 @@ function BranchMembersPanel({branch, onClose, t, members=[]}){
         {members.length===0 ? <p style={{fontSize:14,color:'#B0A090',margin:0}}>{t.noMembers}</p>
         : <div style={{display:'flex',flexDirection:'column',gap:8}}>
             {members.map(m =>
-              <div key={m.id||m.email} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 14px',background:'#F8F5F2',borderRadius:10,borderLeft:'3px solid '+branch.color}}>
-                <div style={{width:32,height:32,borderRadius:'50%',background:branch.color+'20',display:'flex',alignItems:'center',justifyContent:'center',fontSize:14,fontWeight:700,color:branch.color}}>{(m.display_name||m.name||'?').charAt(0).toUpperCase()}</div>
+              <div key={m.id||m.email} onClick={()=>onOpenProfile&&onOpenProfile(m.id)} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 14px',background:'#F8F5F2',borderRadius:10,borderLeft:'3px solid '+branch.color,cursor:onOpenProfile?'pointer':'default'}}>
+                <Avatar user={{display_name:m.display_name||m.name,branch_id:branch.id,photo_url:m.photo_url}} size={32}/>
                 <div>
                   <span style={{fontSize:14,fontWeight:500,color:COLORS.text}}>{m.display_name||m.name}</span>
                   {m.role==='family_member' && <span style={{fontSize:9,fontWeight:700,padding:'2px 7px',borderRadius:8,background:'#5B21B618',color:'#5B21B6',marginLeft:6}}>{t.familyBadge}</span>}
@@ -363,6 +381,480 @@ function CostCalculator({booking, weeks, onSave, onClose, t, lang}){
           <button onClick={onClose} style={{flex:1,padding:'11px 0',background:COLORS.bg,border:'none',borderRadius:10,fontSize:14,fontWeight:500,color:'#5A4D40',cursor:'pointer',fontFamily:"'DM Sans',sans-serif"}}>{t.close}</button>
           <button onClick={()=>onSave(booking.id,guests,cost.total,includeCleaning)} style={{flex:1,padding:'11px 0',background:COLORS.success,border:'none',borderRadius:10,fontSize:14,fontWeight:600,color:'white',cursor:'pointer',fontFamily:"'DM Sans',sans-serif"}}>{t.saveCosts}</button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════
+// PROFILES
+// ═══════════════════════════════════════════════════════
+
+// Photo paths come back relative to the app root (uploads/u42.jpg?v=...).
+function profileMediaUrl(path){ return path ? (_pageBase + '/' + path) : null; }
+
+const SKILL_SLUGS = ['garden','maintenance','cooking','pruning','cleaning'];
+function skillLabel(slug,t){
+  return {garden:t.skillGarden,maintenance:t.skillMaintenance,cooking:t.skillCooking,
+          pruning:t.skillPruning,cleaning:t.skillCleaning}[slug]||slug;
+}
+function stayPrefLabel(pref,t){
+  return {week:t.stayWeek,midweek:t.stayMidweek,weekend:t.stayWeekend,none:t.stayNone}[pref||'none']||t.stayNone;
+}
+const SEASONS = ['spring','summer','autumn','winter','any'];
+function seasonLabel(sn,t){
+  return {spring:t.seasonSpring,summer:t.seasonSummer,autumn:t.seasonAutumn,
+          winter:t.seasonWinter,any:t.seasonAny}[sn]||sn;
+}
+// wa.me wants bare digits, no '+' and no separators.
+function waLink(phone){
+  const digits = String(phone||'').replace(/\D+/g,'');
+  return digits ? 'https://wa.me/'+digits : null;
+}
+const COUNTRY_CODES = [['+31','NL'],['+49','DE'],['+32','BE'],['+33','FR'],['+41','CH'],['+44','UK'],['+34','ES'],['+39','IT'],['+1','US']];
+
+// Photo when there is one, otherwise the branch-coloured initial that the
+// app has always shown. Never breaks when a member has no profile.
+function Avatar({user, size=32, onClick}){
+  const name = (user && (user.display_name||user.name||user.user_name)) || '?';
+  const branch = FAMILY_BRANCHES.find(b=>b.id===(user&&user.branch_id));
+  const color = branch ? branch.color : '#8B7D6B';
+  const url = profileMediaUrl(user && (user.photo_url||user.photo_path));
+  const base = {width:size,height:size,borderRadius:'50%',flexShrink:0,
+                cursor:onClick?'pointer':'default',display:'flex',alignItems:'center',
+                justifyContent:'center',overflow:'hidden'};
+  if(url) return <img src={url} alt={name} onClick={onClick} style={{...base,objectFit:'cover',border:'1.5px solid '+color+'40'}}/>;
+  return <div onClick={onClick} style={{...base,background:color+'20',color:color,fontWeight:700,fontSize:Math.round(size*0.42)}}>
+    {String(name).charAt(0).toUpperCase()}
+  </div>;
+}
+
+// A name that opens the member's profile card.
+function MemberLink({user, onOpen, showAvatar=true, size=22, color, style}){
+  if(!user || !user.user_id && !user.id) return <span style={style}>{user&&(user.display_name||user.user_name)}</span>;
+  const id = user.user_id||user.id;
+  return <span onClick={e=>{e.stopPropagation();onOpen&&onOpen(id);}}
+    style={{display:'inline-flex',alignItems:'center',gap:5,cursor:onOpen?'pointer':'default',...(style||{})}}>
+    {showAvatar && <Avatar user={user} size={size}/>}
+    <span style={{color:color,textDecoration:onOpen?'underline dotted':'none',textUnderlineOffset:2}}>{user.display_name||user.user_name}</span>
+  </span>;
+}
+
+function StaysList({userId, t, lang}){
+  const [data, setData] = React.useState(null);
+  const [error, setError] = React.useState('');
+  const [expanded, setExpanded] = React.useState(false);
+  React.useEffect(()=>{
+    let live = true;
+    setData(null); setError('');
+    api('profile/stays'+(userId?('/'+userId):''))
+      .then(d=>{ if(live) setData(d); })
+      .catch(e=>{ if(live) setError(e.message); });
+    return ()=>{ live=false; };
+  },[userId]);
+
+  if(error) return <div style={{fontSize:12,color:COLORS.muted}}>{error}</div>;
+  if(!data) return <div style={{fontSize:12,color:COLORS.muted}}>{t.loading}</div>;
+
+  const upcoming = data.stays.filter(s=>s.upcoming);
+  const past = data.stays.filter(s=>!s.upcoming);
+  const shown = expanded ? past : past.slice(0,3);
+  const hidden = past.length - shown.length;
+
+  const row = (st,isUp)=>(
+    <div key={st.booking_id} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 12px',borderRadius:8,
+      background:isUp?COLORS.success+'12':'#F8F5F2',borderLeft:'3px solid '+(isUp?COLORS.success:'#E0D8CF')}}>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontSize:13,color:COLORS.text,fontWeight:isUp?600:500}}>
+          {formatDate(st.check_in_date,lang)} &rarr; {formatDate(st.check_out_date,lang)}
+        </div>
+        <div style={{fontSize:11,color:COLORS.muted}}>
+          {st.nights} {st.nights===1?t.nightLabel:t.nightsLabel}
+          {st.guests?(' · '+st.guests+' '+t.people):''}
+        </div>
+      </div>
+      {isUp && <span style={{fontSize:10,fontWeight:700,color:COLORS.success}}>{t.upcomingStay}</span>}
+    </div>
+  );
+
+  return (
+    <div style={{display:'flex',flexDirection:'column',gap:6}}>
+      {upcoming.map(st=>row(st,true))}
+      {past.length===0 && upcoming.length===0 && <div style={{fontSize:12,color:COLORS.muted}}>{t.noStaysYet}</div>}
+      {shown.map(st=>row(st,false))}
+      {hidden>0 && <button onClick={()=>setExpanded(true)} style={{background:'none',border:'none',color:COLORS.accent,fontSize:12,cursor:'pointer',padding:'4px 0',textAlign:'left',fontFamily:"'DM Sans',sans-serif"}}>
+        {t.showEarlier.replace('%n',hidden)}
+      </button>}
+      {expanded && past.length>3 && <button onClick={()=>setExpanded(false)} style={{background:'none',border:'none',color:COLORS.muted,fontSize:12,cursor:'pointer',padding:'4px 0',textAlign:'left',fontFamily:"'DM Sans',sans-serif"}}>
+        {t.showFewer}
+      </button>}
+      {past.length>0 && <div style={{display:'flex',gap:14,marginTop:6,paddingTop:8,borderTop:'1px solid '+COLORS.border}}>
+        {[[t.totalStays,data.totals.stays],[t.totalNights,data.totals.nights],
+          [t.firstVisit,data.totals.first_visit?formatDate(data.totals.first_visit,lang):'—']].map(([label,val])=>
+          <div key={label}><div style={{fontSize:15,fontWeight:700,color:COLORS.text}}>{val}</div>
+            <div style={{fontSize:10,color:COLORS.muted,textTransform:'uppercase',letterSpacing:'0.5px'}}>{label}</div></div>)}
+      </div>}
+    </div>
+  );
+}
+
+function ProfileEditForm({profile, onSaved, onCancel, showToast, t, lang}){
+  const [bio, setBio] = React.useState(profile.bio||'');
+  const [cc, setCc] = React.useState(()=>{
+    const p = profile.phone_e164||'';
+    const hit = COUNTRY_CODES.find(([code])=>p.startsWith(code));
+    return hit?hit[0]:'+31';
+  });
+  const [phone, setPhone] = React.useState(()=>{
+    const p = profile.phone_e164||'';
+    const hit = COUNTRY_CODES.find(([code])=>p.startsWith(code));
+    return hit?p.slice(hit[0].length):p.replace(/^\+/,'');
+  });
+  const [town, setTown] = React.useState(profile.home_town||'');
+  const [langs, setLangs] = React.useState((profile.languages||'').split(',').filter(Boolean));
+  const [household, setHousehold] = React.useState(profile.household_size||'');
+  const [prefStay, setPrefStay] = React.useState(profile.pref_stay||'none');
+  const [prefSeason, setPrefSeason] = React.useState(profile.pref_season||'');
+  const [skills, setSkills] = React.useState(profile.skills||[]);
+  const [shareDefault, setShareDefault] = React.useState(!!profile.open_to_share_default);
+  const [vis, setVis] = React.useState({
+    vis_photo_bio: profile.vis_photo_bio!==false,
+    vis_phone:     profile.vis_phone!==false,
+    vis_town:      profile.vis_town!==false,
+    vis_stays:     !!profile.vis_stays,
+  });
+  const [photoUrl, setPhotoUrl] = React.useState(profile.photo_url||profile.photo_path||null);
+  const [busy, setBusy] = React.useState(false);
+  const fileRef = React.useRef(null);
+
+  const iS={width:'100%',padding:'10px 14px',border:'1.5px solid '+COLORS.border,borderRadius:10,fontSize:14,outline:'none',fontFamily:"'DM Sans',sans-serif",boxSizing:'border-box',background:'white'};
+  const labelS={fontSize:11,fontWeight:600,color:COLORS.muted,display:'block',marginBottom:4};
+
+  const toggle = (list,setList,val)=> setList(list.includes(val)?list.filter(x=>x!==val):[...list,val]);
+
+  const uploadPhoto = async (file)=>{
+    if(!file) return;
+    setBusy(true);
+    try{
+      const fd = new FormData(); fd.append('photo', file);
+      const res = await apiUpload('profile/photo', fd);
+      setPhotoUrl(res.photo_url||res.photo_path);
+    }catch(e){ showToast(e.message); }
+    setBusy(false);
+  };
+  const removePhoto = async ()=>{
+    setBusy(true);
+    try{ await api('profile/photo',{method:'DELETE'}); setPhotoUrl(null); showToast(t.photoRemoved); }
+    catch(e){ showToast(e.message); }
+    setBusy(false);
+  };
+  const save = async ()=>{
+    setBusy(true);
+    try{
+      const saved = await api('profile/me',{method:'PUT',body:JSON.stringify({
+        bio, phone_e164: phone.trim()? (cc+phone) : '', home_town: town,
+        languages: langs, household_size: household===''?null:parseInt(household),
+        pref_stay: prefStay, pref_season: prefSeason, skills,
+        open_to_share_default: shareDefault, ...vis,
+      })});
+      showToast(t.profileSaved);
+      onSaved && onSaved(saved);
+    }catch(e){ showToast(e.message); }
+    setBusy(false);
+  };
+
+  return (
+    <div style={{display:'flex',flexDirection:'column',gap:14}}>
+      <div style={{display:'flex',alignItems:'center',gap:14}}>
+        <Avatar user={{display_name:profile.display_name,branch_id:profile.branch_id,photo_url:photoUrl}} size={64}/>
+        <div style={{flex:1}}>
+          <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" style={{display:'none'}}
+            onChange={e=>uploadPhoto(e.target.files&&e.target.files[0])}/>
+          <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+            <button onClick={()=>fileRef.current&&fileRef.current.click()} disabled={busy} style={{padding:'7px 12px',background:'transparent',border:'1.5px solid '+COLORS.border,borderRadius:8,fontSize:12,fontWeight:600,color:COLORS.text,cursor:'pointer',fontFamily:"'DM Sans',sans-serif"}}>{t.uploadPhoto}</button>
+            {photoUrl && <button onClick={removePhoto} disabled={busy} style={{padding:'7px 12px',background:'transparent',border:'1.5px solid '+COLORS.border,borderRadius:8,fontSize:12,color:COLORS.muted,cursor:'pointer',fontFamily:"'DM Sans',sans-serif"}}>{t.removePhoto}</button>}
+          </div>
+          <div style={{fontSize:10,color:COLORS.muted,marginTop:5}}>{t.photoHint}</div>
+        </div>
+      </div>
+
+      <div>
+        <label style={labelS}>{t.bioLabel}</label>
+        <textarea rows={2} value={bio} maxLength={200} onChange={e=>setBio(e.target.value)} placeholder={t.bioHint} style={{...iS,resize:'vertical'}}/>
+        <div style={{fontSize:10,color:bio.length>180?COLORS.warning:COLORS.muted,marginTop:3,textAlign:'right'}}>{200-bio.length} {t.charsLeft}</div>
+      </div>
+
+      <div>
+        <label style={labelS}>{t.phoneLabel}</label>
+        <div style={{display:'flex',gap:8}}>
+          <select value={cc} onChange={e=>setCc(e.target.value)} style={{...iS,width:110,flexShrink:0}}>
+            {COUNTRY_CODES.map(([code,name])=><option key={code} value={code}>{name} {code}</option>)}
+          </select>
+          <input type="tel" value={phone} onChange={e=>setPhone(e.target.value)} placeholder="6 12345678" style={iS}/>
+        </div>
+      </div>
+
+      <div style={{display:'flex',gap:8}}>
+        <div style={{flex:1}}><label style={labelS}>{t.homeTownLabel}</label>
+          <input type="text" value={town} maxLength={80} onChange={e=>setTown(e.target.value)} style={iS}/></div>
+        <div style={{width:130}}><label style={labelS}>{t.householdLabel}</label>
+          <input type="number" min={1} max={50} value={household} onChange={e=>setHousehold(e.target.value)} style={iS}/></div>
+      </div>
+
+      <div style={{display:'flex',gap:8}}>
+        <div style={{flex:1}}><label style={labelS}>{t.prefStayLabel}</label>
+          <select value={prefStay} onChange={e=>setPrefStay(e.target.value)} style={iS}>
+            {['none','week','midweek','weekend'].map(k=><option key={k} value={k}>{stayPrefLabel(k,t)}</option>)}
+          </select></div>
+        <div style={{flex:1}}><label style={labelS}>{t.prefSeasonLabel}</label>
+          <select value={prefSeason} onChange={e=>setPrefSeason(e.target.value)} style={iS}>
+            <option value="">—</option>
+            {SEASONS.map(sn=><option key={sn} value={sn}>{seasonLabel(sn,t)}</option>)}
+          </select></div>
+      </div>
+
+      <div>
+        <label style={labelS}>{t.languagesLabel}</label>
+        <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+          {['nl','en','de','fr'].map(code=>{
+            const on = langs.includes(code);
+            return <button key={code} onClick={()=>toggle(langs,setLangs,code)} style={{padding:'6px 12px',borderRadius:16,border:'1.5px solid '+(on?COLORS.success:COLORS.border),background:on?COLORS.success+'18':'transparent',color:on?COLORS.success:COLORS.muted,fontSize:12,fontWeight:600,cursor:'pointer',fontFamily:"'DM Sans',sans-serif"}}>{code.toUpperCase()}</button>;
+          })}
+        </div>
+      </div>
+
+      <div>
+        <label style={labelS}>{t.skillsLabel}</label>
+        <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+          {SKILL_SLUGS.map(slug=>{
+            const on = skills.includes(slug);
+            return <button key={slug} onClick={()=>toggle(skills,setSkills,slug)} style={{padding:'6px 12px',borderRadius:16,border:'1.5px solid '+(on?COLORS.board:COLORS.border),background:on?COLORS.board+'18':'transparent',color:on?COLORS.board:COLORS.muted,fontSize:12,fontWeight:600,cursor:'pointer',fontFamily:"'DM Sans',sans-serif"}}>{skillLabel(slug,t)}</button>;
+          })}
+        </div>
+      </div>
+
+      <label style={{display:'flex',alignItems:'center',gap:8,fontSize:13,color:COLORS.text,cursor:'pointer'}}>
+        <input type="checkbox" checked={shareDefault} onChange={()=>setShareDefault(!shareDefault)}/>{t.shareDefaultLabel}
+      </label>
+
+      <div style={{padding:14,background:COLORS.bg,borderRadius:10}}>
+        <div style={{fontSize:12,fontWeight:700,color:COLORS.text,marginBottom:8}}>{'\u{1F512}'} {t.whoSeesWhat}</div>
+        {[['vis_photo_bio',t.visPhotoBio],['vis_phone',t.visPhone],['vis_town',t.visTown],['vis_stays',t.visStays]].map(([k,label])=>
+          <label key={k} style={{display:'flex',alignItems:'center',gap:8,fontSize:13,color:COLORS.text,cursor:'pointer',marginBottom:6}}>
+            <input type="checkbox" checked={!!vis[k]} onChange={()=>setVis({...vis,[k]:!vis[k]})}/>{label}
+          </label>)}
+        <div style={{fontSize:10,color:COLORS.muted,marginTop:4}}>{t.visNote}</div>
+      </div>
+
+      <div style={{display:'flex',gap:8}}>
+        <button onClick={onCancel} style={{flex:1,padding:'11px 0',background:COLORS.bg,border:'none',borderRadius:10,fontSize:14,fontWeight:600,color:COLORS.text,cursor:'pointer',fontFamily:"'DM Sans',sans-serif"}}>{t.close}</button>
+        <button onClick={save} disabled={busy} style={{flex:2,padding:'11px 0',background:busy?'#D4C5B5':COLORS.success,border:'none',borderRadius:10,fontSize:14,fontWeight:600,color:'white',cursor:busy?'default':'pointer',fontFamily:"'DM Sans',sans-serif"}}>{busy?t.loading:t.saveProfile}</button>
+      </div>
+    </div>
+  );
+}
+
+function ProfileCard({userId, self, onClose, showToast, t, lang}){
+  const [profile, setProfile] = React.useState(null);
+  const [error, setError] = React.useState('');
+  const [editing, setEditing] = React.useState(false);
+  const [preview, setPreview] = React.useState(false);
+
+  const load = React.useCallback(()=>{
+    setError('');
+    api(self?'profile/me':('profile/'+userId))
+      .then(setProfile).catch(e=>setError(e.message));
+  },[userId,self]);
+  React.useEffect(load,[load]);
+
+  const branch = profile ? FAMILY_BRANCHES.find(b=>b.id===profile.branch_id) : null;
+  const color = branch?branch.color:COLORS.muted;
+
+  // "See it as others do" applies the same visibility rules the server
+  // would, so the preview matches what another member actually receives.
+  const shown = (!self || !preview) ? profile : (profile && {
+    ...profile,
+    photo_url: profile.vis_photo_bio?profile.photo_url:null,
+    bio:       profile.vis_photo_bio?profile.bio:null,
+    phone_e164:profile.vis_phone?profile.phone_e164:null,
+    email:     profile.vis_phone?profile.email:null,
+    home_town: profile.vis_town?profile.home_town:null,
+    stays_visible: profile.vis_stays,
+  });
+
+  const chip = (text,key)=><span key={key} style={{fontSize:11,padding:'4px 10px',borderRadius:14,background:COLORS.bg,color:COLORS.text}}>{text}</span>;
+  const canSeeStays = self ? true : (profile && profile.stays_visible);
+  const wa = shown && shown.phone_e164 ? waLink(shown.phone_e164) : null;
+
+  return (
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.3)',zIndex:220,display:'flex',alignItems:'center',justifyContent:'center',padding:16}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{background:COLORS.white,borderRadius:16,width:420,maxWidth:'100%',maxHeight:'88vh',overflow:'auto',boxShadow:'0 12px 48px rgba(0,0,0,0.15)'}}>
+        {error && <div style={{padding:24,fontSize:13,color:COLORS.danger}}>{error}</div>}
+        {!profile && !error && <div style={{padding:24,fontSize:13,color:COLORS.muted}}>{t.loading}</div>}
+        {profile && <>
+          <div style={{height:72,background:color+'22',borderRadius:'16px 16px 0 0'}}/>
+          <div style={{padding:'0 24px 24px 24px',marginTop:-34}}>
+            <div style={{display:'flex',alignItems:'flex-end',gap:12,marginBottom:12}}>
+              <div style={{border:'3px solid '+COLORS.white,borderRadius:'50%',lineHeight:0}}>
+                <Avatar user={{display_name:profile.display_name,branch_id:profile.branch_id,photo_url:shown.photo_url}} size={68}/>
+              </div>
+              <div style={{paddingBottom:6,minWidth:0}}>
+                <div style={{fontSize:17,fontWeight:700,color:COLORS.text,fontFamily:"'Playfair Display',Georgia,serif"}}>{profile.display_name}</div>
+                <div style={{fontSize:11,color:color,fontWeight:600}}>{branch?branch.name:''}
+                  {profile.role==='family_member' && <span style={{marginLeft:6,fontSize:9,fontWeight:700,padding:'2px 7px',borderRadius:8,background:COLORS.board+'18',color:COLORS.board}}>{t.familyBadge}</span>}
+                  {profile.role==='admin' && <span style={{marginLeft:6,fontSize:9,fontWeight:700,padding:'2px 7px',borderRadius:8,background:COLORS.accent+'18',color:COLORS.accent}}>{t.roleAdmin}</span>}
+                </div>
+              </div>
+            </div>
+
+            {editing ? <ProfileEditForm profile={profile} showToast={showToast} t={t} lang={lang}
+                          onCancel={()=>setEditing(false)}
+                          onSaved={p=>{setProfile(p);setEditing(false);}}/>
+            : <>
+              {shown.bio && <div style={{fontSize:14,color:COLORS.text,marginBottom:12,lineHeight:1.5}}>{shown.bio}</div>}
+
+              <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:12}}>
+                {shown.home_town && chip('\u{1F4CD} '+shown.home_town,'town')}
+                {shown.languages && chip('\u{1F5E3} '+shown.languages.toUpperCase().split(',').join(' · '),'langs')}
+                {shown.household_size && chip('\u{1F465} '+shown.household_size+' '+t.people,'hh')}
+              </div>
+
+              <div style={{fontSize:12,color:COLORS.muted,marginBottom:4}}>
+                {t.prefStayLabel}: <strong style={{color:COLORS.text}}>{stayPrefLabel(shown.pref_stay,t)}</strong>
+                {shown.pref_season?(' · '+seasonLabel(shown.pref_season,t)):''}
+              </div>
+              {shown.open_to_share_default && <div style={{fontSize:12,color:'#8A6D00',marginBottom:10}}>{'\u{1F91D}'} {t.openToShare}</div>}
+
+              {shown.skills && shown.skills.length>0 && <div style={{marginBottom:14}}>
+                <div style={{fontSize:11,fontWeight:600,color:COLORS.muted,marginBottom:5}}>{t.skillsLabel}</div>
+                <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                  {shown.skills.map(sl=><span key={sl} style={{fontSize:11,fontWeight:600,padding:'4px 10px',borderRadius:14,background:COLORS.board+'14',color:COLORS.board}}>{skillLabel(sl,t)}</span>)}
+                </div>
+              </div>}
+
+              {!self && (wa||shown.email) && <div style={{display:'flex',gap:8,marginBottom:14}}>
+                {wa && <a href={wa} target="_blank" rel="noopener noreferrer" style={{flex:1,textAlign:'center',padding:'10px 0',background:'#25D366',color:'white',borderRadius:10,textDecoration:'none',fontWeight:600,fontSize:13}}>{t.messageWhatsApp}</a>}
+                {shown.email && <a href={'mailto:'+shown.email} style={{flex:1,textAlign:'center',padding:'10px 0',background:COLORS.bg,color:COLORS.text,borderRadius:10,textDecoration:'none',fontWeight:600,fontSize:13}}>{t.messageEmail}</a>}
+              </div>}
+
+              <div style={{marginBottom:14}}>
+                <div style={{fontSize:11,fontWeight:700,color:COLORS.muted,textTransform:'uppercase',letterSpacing:'1px',marginBottom:8}}>{t.staysTitle}</div>
+                {canSeeStays ? <StaysList userId={self?0:userId} t={t} lang={lang}/>
+                  : <div style={{fontSize:12,color:COLORS.muted}}>{t.staysPrivate}</div>}
+              </div>
+
+              {self && <div style={{display:'flex',gap:8}}>
+                <button onClick={()=>setEditing(true)} style={{flex:2,padding:'11px 0',background:COLORS.accent,border:'none',borderRadius:10,fontSize:14,fontWeight:600,color:'white',cursor:'pointer',fontFamily:"'DM Sans',sans-serif"}}>{t.editProfile}</button>
+                <button onClick={()=>setPreview(!preview)} style={{flex:2,padding:'11px 0',background:'transparent',border:'1.5px solid '+COLORS.border,borderRadius:10,fontSize:13,fontWeight:600,color:COLORS.muted,cursor:'pointer',fontFamily:"'DM Sans',sans-serif"}}>{preview?t.backToMyView:t.previewAsOthers}</button>
+              </div>}
+            </>}
+            <button onClick={onClose} style={{marginTop:10,width:'100%',padding:'10px 0',background:COLORS.bg,border:'none',borderRadius:10,fontSize:14,fontWeight:500,color:'#5A4D40',cursor:'pointer',fontFamily:"'DM Sans',sans-serif"}}>{t.close}</button>
+          </div>
+        </>}
+      </div>
+    </div>
+  );
+}
+
+function Directory({onOpenProfile, t, lang}){
+  const [rows, setRows] = React.useState(null);
+  const [q, setQ] = React.useState('');
+  const [branchFilter, setBranchFilter] = React.useState(0);
+  const [shareOnly, setShareOnly] = React.useState(false);
+
+  React.useEffect(()=>{ api('profile/directory').then(setRows).catch(()=>setRows([])); },[]);
+  if(!rows) return <div style={{fontSize:13,color:COLORS.muted}}>{t.loading}</div>;
+
+  const needle = q.trim().toLowerCase();
+  const match = (m)=>{
+    if(branchFilter && m.branch_id!==branchFilter) return false;
+    if(shareOnly && !m.open_to_share_default) return false;
+    if(!needle) return true;
+    const hay = [m.display_name, m.home_town||'', (m.skills||[]).map(sl=>skillLabel(sl,t)).join(' ')].join(' ').toLowerCase();
+    return hay.includes(needle);
+  };
+  const shown = rows.filter(match);
+  const byBranch = {};
+  shown.forEach(m=>{ (byBranch[m.branch_id] = byBranch[m.branch_id]||[]).push(m); });
+
+  const iS={padding:'10px 14px',border:'1.5px solid '+COLORS.border,borderRadius:10,fontSize:14,outline:'none',fontFamily:"'DM Sans',sans-serif",background:'white'};
+  return (
+    <div>
+      <div style={{display:'flex',gap:8,marginBottom:14,flexWrap:'wrap'}}>
+        <input type="text" value={q} onChange={e=>setQ(e.target.value)} placeholder={t.searchMembers} style={{...iS,flex:1,minWidth:180}}/>
+        <select value={branchFilter} onChange={e=>setBranchFilter(parseInt(e.target.value))} style={iS}>
+          <option value={0}>{t.all} — {t.filterBranch}</option>
+          {FAMILY_BRANCHES.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
+        </select>
+        <button onClick={()=>setShareOnly(!shareOnly)} style={{...iS,cursor:'pointer',fontWeight:600,border:'1.5px solid '+(shareOnly?COLORS.openToShare:COLORS.border),color:shareOnly?'#8A6D00':COLORS.muted,background:shareOnly?COLORS.openToShare+'18':'white'}}>{'\u{1F91D}'} {t.openToShareFilter}</button>
+      </div>
+      {shown.length===0 && <div style={{fontSize:13,color:COLORS.muted,padding:12}}>{t.noMembersFound}</div>}
+      {FAMILY_BRANCHES.filter(b=>byBranch[b.id]).map(b=>(
+        <div key={b.id} style={{marginBottom:18}}>
+          <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
+            <div style={{width:10,height:10,borderRadius:3,background:b.color}}/>
+            <div style={{fontSize:12,fontWeight:700,color:COLORS.muted,textTransform:'uppercase',letterSpacing:'1px'}}>{b.name}</div>
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(190px,1fr))',gap:8}}>
+            {byBranch[b.id].map(m=>(
+              <div key={m.user_id} onClick={()=>onOpenProfile(m.user_id,m.is_self)} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',background:COLORS.white,borderRadius:10,cursor:'pointer',borderLeft:'3px solid '+b.color,boxShadow:'0 1px 4px rgba(0,0,0,0.04)'}}>
+                <Avatar user={{display_name:m.display_name,branch_id:m.branch_id,photo_url:m.photo_url}} size={38}/>
+                <div style={{minWidth:0,flex:1}}>
+                  <div style={{fontSize:13,fontWeight:600,color:COLORS.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+                    {m.display_name}{m.open_to_share_default?' \u{1F91D}':''}
+                  </div>
+                  <div style={{fontSize:11,color:COLORS.muted,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+                    {m.has_profile ? [m.home_town, stayPrefLabel(m.pref_stay,t)].filter(Boolean).join(' · ') : t.noProfileYet}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function FamilyView({user, onOpenProfile, showToast, t, lang}){
+  const [sub, setSub] = React.useState('me');
+  return (
+    <div style={{maxWidth:900,margin:'0 auto',padding:'0 20px'}}>
+      <div style={{display:'flex',gap:0,marginBottom:20,background:COLORS.bg,borderRadius:10,padding:3,maxWidth:340}}>
+        {[['me',t.myProfile],['dir',t.directory]].map(([k,label])=>
+          <button key={k} onClick={()=>setSub(k)} style={{flex:1,padding:'9px 0',border:'none',borderRadius:8,background:sub===k?COLORS.white:'transparent',color:sub===k?COLORS.text:COLORS.muted,fontWeight:sub===k?600:400,cursor:'pointer',fontSize:13,boxShadow:sub===k?'0 1px 4px rgba(0,0,0,0.08)':'none',fontFamily:"'DM Sans',sans-serif"}}>{label}</button>)}
+      </div>
+      {sub==='me'
+        ? <MyProfilePanel user={user} showToast={showToast} t={t} lang={lang}/>
+        : <Directory onOpenProfile={onOpenProfile} t={t} lang={lang}/>}
+    </div>
+  );
+}
+
+// The "My profile" pane: the edit form inline, so it is one click away.
+function MyProfilePanel({user, showToast, t, lang}){
+  const [profile, setProfile] = React.useState(null);
+  const [error, setError] = React.useState('');
+  React.useEffect(()=>{ api('profile/me').then(setProfile).catch(e=>setError(e.message)); },[]);
+  if(error) return <div style={{fontSize:13,color:COLORS.danger}}>{error}</div>;
+  if(!profile) return <div style={{fontSize:13,color:COLORS.muted}}>{t.loading}</div>;
+  const branch = FAMILY_BRANCHES.find(b=>b.id===profile.branch_id);
+  return (
+    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(300px,1fr))',gap:16,alignItems:'start'}}>
+      <div style={{background:COLORS.white,borderRadius:14,padding:20,boxShadow:'0 1px 8px rgba(0,0,0,0.04)'}}>
+        <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:16}}>
+          <Avatar user={{display_name:profile.display_name,branch_id:profile.branch_id,photo_url:profile.photo_url}} size={56}/>
+          <div>
+            <div style={{fontSize:16,fontWeight:700,color:COLORS.text,fontFamily:"'Playfair Display',Georgia,serif"}}>{profile.display_name}</div>
+            <div style={{fontSize:11,color:branch?branch.color:COLORS.muted,fontWeight:600}}>{branch?branch.name:''}</div>
+          </div>
+        </div>
+        <ProfileEditForm profile={profile} showToast={showToast} t={t} lang={lang}
+          onCancel={()=>{}} onSaved={setProfile}/>
+      </div>
+      <div style={{background:COLORS.white,borderRadius:14,padding:20,boxShadow:'0 1px 8px rgba(0,0,0,0.04)'}}>
+        <div style={{fontSize:11,fontWeight:700,color:COLORS.muted,textTransform:'uppercase',letterSpacing:'1px',marginBottom:12}}>{t.staysTitle}</div>
+        <StaysList userId={0} t={t} lang={lang}/>
       </div>
     </div>
   );
@@ -458,8 +950,9 @@ function BookingManager({bookings=[], weeks=[], onEditBooking, onDeleteBooking, 
 // ═══════════════════════════════════════════════════════
 // BOOKING DIALOG
 // ═══════════════════════════════════════════════════════
-function BookingDialog({week, phase, presetCheckIn, presetCheckOut, user, registeredUsers=[], onConfirm, onCancel, t, lang}){
-  const [openToShare, setOpenToShare] = React.useState(false);
+function BookingDialog({week, phase, presetCheckIn, presetCheckOut, user, registeredUsers=[], shareDefault=false, onConfirm, onCancel, t, lang}){
+  // Pre-filled from the member's profile preference; still theirs to change.
+  const [openToShare, setOpenToShare] = React.useState(!!shareDefault);
   const [remark, setRemark] = React.useState('');
   const [linked, setLinked] = React.useState([]);
   const [useCustom, setUseCustom] = React.useState(!!(presetCheckIn||presetCheckOut));
@@ -676,7 +1169,7 @@ function AdminPanel({registeredUsers=[], weeks, year, bookings=[], onBooked, onA
 // ═══════════════════════════════════════════════════════
 // WEEK ROW
 // ═══════════════════════════════════════════════════════
-function WeekRow({week, myBooking, allBookings=[], gcalEvents=[], boardEvents=[], onBook, onRequestCancel, onToggleShare, onJoinSpecialEvent, onJoinBooking, isFamily=false, user, phase, clanBookedByBranch, userBookedPriority, phaseActive, t, lang, highlight}){
+function WeekRow({week, myBooking, allBookings=[], gcalEvents=[], boardEvents=[], onBook, onRequestCancel, onToggleShare, onJoinSpecialEvent, onJoinBooking, onOpenProfile, isFamily=false, user, phase, clanBookedByBranch, userBookedPriority, phaseActive, t, lang, highlight}){
   const hasMyBooking = !!myBooking;
   const userBranch = FAMILY_BRANCHES.find(b=>b.id===user.branch_id);
   const isPending = hasMyBooking && myBooking.cancellation_status==='pending';
@@ -760,7 +1253,7 @@ function WeekRow({week, myBooking, allBookings=[], gcalEvents=[], boardEvents=[]
     const bs=b.check_in_date||week.start, be=b.check_out_date||addDayISO(week.end,1);
     if(!(bs < weekDep && week.start < be)) return;
     if(b.is_hidden || !b.user_name) occupants.push({name:t.booked,hidden:true,shared:false});
-    else occupants.push({name:b.user_name,hidden:false,shared:!!b.open_to_share,
+    else occupants.push({name:b.user_name,hidden:false,shared:!!b.open_to_share,userId:b.user_id,
                          from:b.check_in_date,to:b.check_out_date,mine:b.user_id===user.id});
   });
   legacyGcalOnly(gcalEvents, allBookings, ()=>week).forEach(ev=>{
@@ -781,9 +1274,15 @@ function WeekRow({week, myBooking, allBookings=[], gcalEvents=[], boardEvents=[]
         {hasMyBooking && myBooking.remarks && <div style={{fontSize:11,color:COLORS.muted,marginTop:2,fontStyle:'italic'}}>{'\u{1F4AC}'} {myBooking.remarks}</div>}
         {isPending && <div style={{fontSize:12,color:COLORS.warning,fontWeight:600,marginTop:2}}>{'\u23F3'} {t.pendingCancellation}</div>}
         {!hasMyBooking && occupants.length>0 && <div style={{fontSize:11,color:COLORS.muted,marginTop:2,display:'flex',flexWrap:'wrap',gap:6}}>
-          {occupants.map((o,i)=><span key={i} style={{color:o.hidden?'#B0A090':o.gcal?COLORS.gcal:COLORS.text,fontWeight:o.hidden?400:600}}>
-            {o.hidden?o.name:(t.bookedBy+': '+o.name)}{o.shared?' \u00B7 \u{1F91D}':''}{o.gcal?' \u00B7 '+t.viaOldCalendar:''}
-          </span>)}
+          {occupants.map((o,i)=>o.userId && onOpenProfile
+            ? <span key={i} style={{display:'inline-flex',alignItems:'center',gap:4}}>
+                <MemberLink user={{user_id:o.userId,display_name:o.name,branch_id:0}} onOpen={onOpenProfile} size={18} color={COLORS.text}
+                  style={{fontWeight:600,fontSize:11}}/>
+                {o.shared?<span style={{color:'#8A6D00'}}>{'\u{1F91D}'}</span>:null}
+              </span>
+            : <span key={i} style={{color:o.hidden?'#B0A090':o.gcal?COLORS.gcal:COLORS.text,fontWeight:o.hidden?400:600}}>
+                {o.hidden?o.name:(t.bookedBy+': '+o.name)}{o.shared?' \u00B7 \u{1F91D}':''}{o.gcal?' \u00B7 '+t.viaOldCalendar:''}
+              </span>)}
         </div>}
         {!hasMyBooking && reason && !specialEvent && occupants.length===0 && <div style={{fontSize:11,color:weekBookedByOther?COLORS.danger:'#B0A090',marginTop:2}}>{reason}</div>}
         {!hasMyBooking && specialEvent && <div style={{fontSize:11,color:COLORS.board,marginTop:2,fontWeight:600}}>{'\u2728'} {specialEvent.name} &middot; {t.reservedForEvent}</div>}
@@ -804,7 +1303,7 @@ function WeekRow({week, myBooking, allBookings=[], gcalEvents=[], boardEvents=[]
 // ═══════════════════════════════════════════════════════
 // BOOKING VIEW (main booking screen)
 // ═══════════════════════════════════════════════════════
-function BookingView({user, bookings=[], myBookings=[], weeks, year, setYear, phase, setPhase, phaseConfig, filterMonth, setFilterMonth, onSelectBranch, onShowAdmin, onBook, onRequestCancel, onToggleShare, onSaveGuests, boardEvents=[], gcalEvents=[], gcalLoading=false, onSignUpBoard, onUnsignUpBoard, onDeleteEvent, onUpdateEvent, onCreateEvent, onJoinBooking, isFamily=false, registeredUsers=[], branchData=[], showToast, t, lang, pendingBookDate, clearPendingBookDate}){
+function BookingView({user, bookings=[], myBookings=[], weeks, year, setYear, phase, setPhase, phaseConfig, filterMonth, setFilterMonth, onSelectBranch, onShowAdmin, onBook, onRequestCancel, onToggleShare, onSaveGuests, boardEvents=[], gcalEvents=[], gcalLoading=false, onSignUpBoard, onUnsignUpBoard, onDeleteEvent, onUpdateEvent, onCreateEvent, onJoinBooking, onOpenProfile, shareDefault=false, isFamily=false, registeredUsers=[], branchData=[], showToast, t, lang, pendingBookDate, clearPendingBookDate}){
   const [costBooking, setCostBooking] = React.useState(null);
   const [bookDialog, setBookDialog] = React.useState(null);
   // Inline "create special event" form state
@@ -866,7 +1365,7 @@ function BookingView({user, bookings=[], myBookings=[], weeks, year, setYear, ph
   return (
     <div className="fargny-booking-layout" style={{display:'flex',maxWidth:1200,margin:'0 auto',gap:24,padding:'24px 20px'}}>
       {costBooking && <CostCalculator booking={costBooking} weeks={weeks} onSave={(id,guests,total,includeCleaning)=>{onSaveGuests(id,guests,includeCleaning);setCostBooking(null);}} onClose={()=>setCostBooking(null)} t={t} lang={lang}/>}
-      {bookDialog && <BookingDialog week={bookDialog.week} phase={bookDialog.phase} presetCheckIn={bookDialog.presetCheckIn} presetCheckOut={bookDialog.presetCheckOut} user={user} registeredUsers={registeredUsers} onConfirm={opts=>{onBook(bookDialog.week,bookDialog.phase,opts);setBookDialog(null);}} onCancel={()=>setBookDialog(null)} t={t} lang={lang}/>}
+      {bookDialog && <BookingDialog week={bookDialog.week} phase={bookDialog.phase} presetCheckIn={bookDialog.presetCheckIn} presetCheckOut={bookDialog.presetCheckOut} user={user} registeredUsers={registeredUsers} shareDefault={shareDefault} onConfirm={opts=>{onBook(bookDialog.week,bookDialog.phase,opts);setBookDialog(null);}} onCancel={()=>setBookDialog(null)} t={t} lang={lang}/>}
 
       {/* SIDEBAR */}
       <div className="fargny-sidebar" style={{width:300,flexShrink:0,display:'flex',flexDirection:'column',gap:16}}>
@@ -1006,7 +1505,7 @@ function BookingView({user, bookings=[], myBookings=[], weeks, year, setYear, ph
                       {ev.creator_name && <div style={{fontSize:11,color:COLORS.muted,marginTop:4}}>{t.createdBy}: <strong>{ev.creator_name}</strong></div>}
                       <div style={{fontSize:12,color:full?COLORS.danger:COLORS.board,marginTop:6,fontWeight:600}}>{countLabel}{full?' \u00b7 '+t.eventFull:''}</div>
                       {ev.participants && ev.participants.length>0 && <div style={{display:'flex',flexWrap:'wrap',gap:4,marginTop:6}}>
-                        {ev.participants.map(p=><span key={p.user_id} style={{fontSize:11,padding:'3px 9px',background:COLORS.board+'18',color:COLORS.board,borderRadius:10,fontWeight:500}}>{p.display_name}</span>)}
+                        {ev.participants.map(p=><span key={p.user_id} onClick={e=>{e.stopPropagation();onOpenProfile&&onOpenProfile(p.user_id);}} style={{fontSize:11,padding:'3px 9px',background:COLORS.board+'18',color:COLORS.board,borderRadius:10,fontWeight:500,cursor:onOpenProfile?'pointer':'default'}}>{p.display_name}</span>)}
                       </div>}
                     </div>
                     <div style={{display:'flex',flexDirection:'column',gap:6,alignItems:'stretch'}}>
@@ -1028,7 +1527,7 @@ function BookingView({user, bookings=[], myBookings=[], weeks, year, setYear, ph
                       {(eventDetail.signup_count||0)}{eventDetail.max_participants?(' / '+eventDetail.max_participants):''} {t.participants}
                     </div>
                     {eventDetail.participants && eventDetail.participants.length>0 && <div style={{display:'flex',flexWrap:'wrap',gap:4,marginBottom:14}}>
-                      {eventDetail.participants.map(p=><span key={p.user_id} style={{fontSize:12,padding:'4px 10px',background:COLORS.board+'18',color:COLORS.board,borderRadius:10,fontWeight:500}}>{p.display_name}</span>)}
+                      {eventDetail.participants.map(p=><span key={p.user_id} onClick={()=>onOpenProfile&&onOpenProfile(p.user_id)} style={{fontSize:12,padding:'4px 10px',background:COLORS.board+'18',color:COLORS.board,borderRadius:10,fontWeight:500,cursor:onOpenProfile?'pointer':'default'}}>{p.display_name}</span>)}
                     </div>}
                     {eventDetail.can_delete && onUpdateEvent && <button onClick={()=>startEditEvent(eventDetail)} style={{width:'100%',padding:'11px 0',marginBottom:8,background:'transparent',border:'1.5px solid '+COLORS.board,borderRadius:10,fontSize:13,fontWeight:600,color:COLORS.board,cursor:'pointer',fontFamily:"'DM Sans',sans-serif"}}>{'✏️'} {t.editEvent}</button>}
                     {eventDetail.can_delete && onDeleteEvent && <button onClick={()=>{const ev=eventDetail;setEventDetail(null);onDeleteEvent(ev);}} style={{width:'100%',padding:'11px 0',marginBottom:8,background:'transparent',border:'1.5px solid '+COLORS.danger,borderRadius:10,fontSize:13,fontWeight:600,color:COLORS.danger,cursor:'pointer',fontFamily:"'DM Sans',sans-serif"}}>{'🗑'} {t.cancelEvent}</button>}
@@ -1050,7 +1549,7 @@ function BookingView({user, bookings=[], myBookings=[], weeks, year, setYear, ph
             : filteredWeeks.reduce((acc,week,i)=>{
                 const prevMonth = i>0 ? filteredWeeks[i-1].month : -1;
                 if(week.month!==prevMonth) acc.push(<div key={'month-'+week.month} style={{padding:'14px 16px 6px 16px',fontSize:13,fontWeight:700,color:COLORS.muted,textTransform:'uppercase',letterSpacing:'0.5px',borderTop:i>0?'1px solid #F0EBE5':'none',marginTop:i>0?4:0}}>{MONTHS_SHORT[lang][week.month]} {year}</div>);
-                acc.push(<WeekRow key={week.id} week={week} myBooking={myBookingMap[week.id]} allBookings={bookings} gcalEvents={gcalEvents} boardEvents={boardEvents} onBook={(w,partial)=>setBookDialog({week:w,phase,presetCheckIn:partial?partial.freeStart:null,presetCheckOut:partial?partial.freeEnd:null})} onRequestCancel={onRequestCancel} onToggleShare={onToggleShare} onJoinBooking={onJoinBooking} isFamily={isFamily} onJoinSpecialEvent={(ev)=>{setPhase('board');setEventDetail(ev);}} user={user} phase={phase} clanBookedByBranch={clanBookedByBranch} userBookedPriority={userBookedPriority} phaseActive={getPhaseStatus(phase,phaseConfig)==='active'||user.is_admin} t={t} lang={lang} highlight={highlightWeekId===week.id}/>);
+                acc.push(<WeekRow key={week.id} week={week} myBooking={myBookingMap[week.id]} allBookings={bookings} gcalEvents={gcalEvents} boardEvents={boardEvents} onBook={(w,partial)=>setBookDialog({week:w,phase,presetCheckIn:partial?partial.freeStart:null,presetCheckOut:partial?partial.freeEnd:null})} onRequestCancel={onRequestCancel} onToggleShare={onToggleShare} onJoinBooking={onJoinBooking} onOpenProfile={onOpenProfile} isFamily={isFamily} onJoinSpecialEvent={(ev)=>{setPhase('board');setEventDetail(ev);}} user={user} phase={phase} clanBookedByBranch={clanBookedByBranch} userBookedPriority={userBookedPriority} phaseActive={getPhaseStatus(phase,phaseConfig)==='active'||user.is_admin} t={t} lang={lang} highlight={highlightWeekId===week.id}/>);
                 return acc;
               },[])}
           </div>
@@ -1063,7 +1562,7 @@ function BookingView({user, bookings=[], myBookings=[], weeks, year, setYear, ph
 // ═══════════════════════════════════════════════════════
 // CALENDAR VIEW
 // ═══════════════════════════════════════════════════════
-function CalendarView({bookings=[], weeks, year, boardEvents=[], gcalEvents=[], clanRevealed, priorityRevealed, registeredUsers=[], user, t, lang, calMonth, setCalMonth, calYear, setCalYear, onPickDate}){
+function CalendarView({bookings=[], weeks, year, boardEvents=[], gcalEvents=[], clanRevealed, priorityRevealed, registeredUsers=[], user, t, lang, calMonth, setCalMonth, calYear, setCalYear, onPickDate, onOpenProfile}){
   const [popup, setPopup] = React.useState(null);
   const today = toISO(new Date());
   const someHidden = !clanRevealed || !priorityRevealed;
@@ -1166,7 +1665,11 @@ function CalendarView({bookings=[], weeks, year, boardEvents=[], gcalEvents=[], 
           </> : <>
             <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:12}}>
               <div style={{width:12,height:12,borderRadius:3,background:popup.data.open_to_share?COLORS.openToShare:(FAMILY_BRANCHES.find(x=>x.id===popup.data.branch_id)||{color:'#ccc'}).color}}/>
-              <h4 style={{fontSize:16,fontWeight:700,color:COLORS.text,margin:0}}>{popup.data.user_name}</h4>
+              <h4 style={{fontSize:16,fontWeight:700,color:COLORS.text,margin:0,display:'flex',alignItems:'center',gap:8}}>
+                {popup.data.user_id && onOpenProfile
+                  ? <MemberLink user={{user_id:popup.data.user_id,display_name:popup.data.user_name,branch_id:popup.data.branch_id}} onOpen={onOpenProfile} size={26} color={COLORS.text}/>
+                  : popup.data.user_name}
+              </h4>
             </div>
             <div style={{display:'flex',flexDirection:'column',gap:6,fontSize:13,color:COLORS.text}}>
               <div><strong>{t.branchLabel}: </strong>{popup.data.branch_name}</div>
@@ -1452,7 +1955,7 @@ function LoginScreen({t, lang, onLangToggle, onLogin}){
 // ═══════════════════════════════════════════════════════
 // ADMIN TAB VIEW (pending cancellations + user management)
 // ═══════════════════════════════════════════════════════
-function AdminTab({bookings=[], weeks=[], registeredUsers=[], user, year, onApproveCancellation, onRejectCancellation, onToggleAdmin, onSetRole, onEditBooking, onDeleteBooking, t, lang}){
+function AdminTab({bookings=[], weeks=[], registeredUsers=[], user, year, onApproveCancellation, onRejectCancellation, onToggleAdmin, onSetRole, onEditBooking, onDeleteBooking, onOpenProfile, t, lang}){
   const pending = bookings.filter(b=>b.cancellation_status==='pending');
   const [roleFilter, setRoleFilter] = React.useState('all');
   const roleOf = u => u.role || (u.is_admin?'admin':'shareholder');
@@ -1535,7 +2038,7 @@ function AdminTab({bookings=[], weeks=[], registeredUsers=[], user, year, onAppr
                 return <div key={u.id} style={{padding:'10px 14px',background:'#F8F5F2',borderRadius:10,display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',borderLeft:'3px solid '+(br?br.color:'#ccc')}}>
                   <div style={{flex:1,minWidth:170}}>
                     <div style={{fontSize:13,fontWeight:600,color:COLORS.text,display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
-                      {u.display_name}
+                      <MemberLink user={{user_id:u.id,display_name:u.display_name,branch_id:u.branch_id,photo_url:u.photo_url}} onOpen={onOpenProfile} size={22} color={COLORS.text}/>
                       <span style={{fontSize:9,fontWeight:700,padding:'2px 7px',borderRadius:8,background:roleColor(r)+'18',color:roleColor(r)}}>{roleLabel(r)}</span>
                     </div>
                     <div style={{fontSize:11,color:COLORS.muted}}>{u.email} &middot; {br?br.name:'—'}
@@ -1580,6 +2083,22 @@ function App(){
   const [branchData, setBranchData] = React.useState([]);
   const [registeredUsers, setRegisteredUsers] = React.useState([]);
   const [adminUsers, setAdminUsers] = React.useState([]);
+  // {userId, self} while a profile card is open.
+  const [profileCard, setProfileCard] = React.useState(null);
+  // Own photo, for the header avatar. Absent until a profile is filled in.
+  const [myPhotoUrl, setMyPhotoUrl] = React.useState(null);
+  const [shareDefault, setShareDefault] = React.useState(false);
+  React.useEffect(()=>{
+    api('profile/me').then(p=>{
+      if(!p) return;
+      setMyPhotoUrl(p.photo_url);
+      setShareDefault(!!p.open_to_share_default);
+    }).catch(()=>{});
+  },[]);
+  const openProfile = React.useCallback((userId, isSelf)=>{
+    if(!userId) return;
+    setProfileCard({userId, self: !!isSelf || userId===user.id});
+  },[user.id]);
   const [calendarData, setCalendarData] = React.useState({bookings:[],clanRevealed:true,priorityRevealed:true});
   const [gcalEvents, setGcalEvents] = React.useState([]);
   const [gcalLoading, setGcalLoading] = React.useState(true);
@@ -1812,14 +2331,16 @@ function App(){
   const isFamily = (user.role==='family_member');
   const totalBooked = bookings.filter(b=>b.cancellation_status!=='approved').length;
   const pendingCount = bookings.filter(b=>b.cancellation_status==='pending').length;
-  const navItems = [{id:'book',label:t.book,emoji:'\u{1F4DD}'},{id:'calendar',label:t.calendar,emoji:'\u{1F4C5}'},{id:'feedback',label:t.feedback,emoji:'\u{1F4CB}'}];
+  const navItems = [{id:'book',label:t.book,emoji:'\u{1F4DD}'},{id:'calendar',label:t.calendar,emoji:'\u{1F4C5}'},{id:'family',label:t.family,emoji:'\u{1F465}'},{id:'feedback',label:t.feedback,emoji:'\u{1F4CB}'}];
   if(user.is_admin) navItems.push({id:'statistics',label:t.statistics,emoji:'\u{1F4CA}'});
   if(user.is_admin) navItems.push({id:'admin',label:t.adminTab,emoji:'\u{1F511}'});
   const branchMembers = selectedBranch ? (branchData.find(b=>b.id===selectedBranch.id)||{}).members||[] : [];
 
   return (
     <div style={{minHeight:'100vh',background:COLORS.bg,fontFamily:"'DM Sans','Segoe UI',sans-serif"}}>
-      {selectedBranch && <BranchMembersPanel branch={selectedBranch} onClose={()=>setSelectedBranch(null)} t={t} members={branchMembers}/>}
+      {view==='family' && <FamilyView user={user} onOpenProfile={openProfile} showToast={showToast} t={t} lang={lang}/>}
+      {profileCard && <ProfileCard userId={profileCard.userId} self={profileCard.self} onClose={()=>setProfileCard(null)} showToast={showToast} t={t} lang={lang}/>}
+      {selectedBranch && <BranchMembersPanel branch={selectedBranch} onClose={()=>setSelectedBranch(null)} t={t} members={branchMembers} onOpenProfile={openProfile}/>}
       {showAdmin && <AdminPanel registeredUsers={registeredUsers} weeks={weeks} year={year} bookings={bookings} onBooked={handleAdminBook} onApproveCancellation={handleApproveCancellation} onRejectCancellation={handleRejectCancellation} onUpdatePayment={handleUpdatePayment} onCreateBoardEvent={handleCreateBoardEvent} onEditBooking={handleAdminEditBooking} onDeleteBooking={handleAdminDeleteBooking} onClose={()=>setShowAdmin(false)} t={t} lang={lang}/>}
       <Toast message={toast}/>
 
@@ -1835,22 +2356,26 @@ function App(){
         </div>
         <div style={{display:'flex',alignItems:'center',gap:10}}>
           <button onClick={toggleLang} style={{padding:'6px 12px',border:'1.5px solid '+COLORS.border,borderRadius:8,background:COLORS.white,fontSize:12,fontWeight:600,color:COLORS.muted,cursor:'pointer',fontFamily:"'DM Sans',sans-serif"}}>{lang==='en'?'\u{1F1F3}\u{1F1F1} NL':'\u{1F1EC}\u{1F1E7} EN'}</button>
-          <div style={{textAlign:'right'}}>
-            <div style={{fontSize:13,fontWeight:600,color:COLORS.text,display:'flex',alignItems:'center',gap:6,justifyContent:'flex-end'}}>
-              {user.display_name}
-              {isFamily && <span style={{fontSize:9,fontWeight:700,padding:'2px 7px',borderRadius:8,background:COLORS.board+'18',color:COLORS.board,whiteSpace:'nowrap'}}>{t.familyMember}</span>}
+          <div onClick={()=>setView('family')} title={t.myProfile}
+            style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer'}}>
+            <div style={{textAlign:'right'}}>
+              <div style={{fontSize:13,fontWeight:600,color:COLORS.text,display:'flex',alignItems:'center',gap:6,justifyContent:'flex-end'}}>
+                {user.display_name}
+                {isFamily && <span style={{fontSize:9,fontWeight:700,padding:'2px 7px',borderRadius:8,background:COLORS.board+'18',color:COLORS.board,whiteSpace:'nowrap'}}>{t.familyMember}</span>}
+              </div>
+              <div style={{fontSize:11,color:userBranch.color,fontWeight:600}}>{userBranch.name}</div>
             </div>
-            <div style={{fontSize:11,color:userBranch.color,fontWeight:600}}>{userBranch.name}</div>
+            <Avatar user={{display_name:user.display_name,branch_id:user.branch_id,photo_url:myPhotoUrl}} size={34}/>
           </div>
           <button onClick={handleLogout} style={{padding:'7px 14px',background:'transparent',border:'1.5px solid #D4C5B5',borderRadius:8,fontSize:12,color:COLORS.muted,cursor:'pointer',fontWeight:500,fontFamily:"'DM Sans',sans-serif"}}>{t.signOut}</button>
         </div>
       </div>
 
-      {view==='book' && <BookingView user={user} bookings={bookings} myBookings={myBookings} weeks={weeks} year={year} setYear={y=>{setYear(y);setFilterMonth(null);}} phase={phase} setPhase={setPhase} phaseConfig={phaseConfig} filterMonth={filterMonth} setFilterMonth={setFilterMonth} onSelectBranch={setSelectedBranch} onShowAdmin={()=>setShowAdmin(true)} onBook={handleBook} onRequestCancel={handleRequestCancel} onToggleShare={handleToggleShare} onJoinBooking={handleJoinBooking} isFamily={isFamily} onSaveGuests={handleSaveGuests} boardEvents={boardEvents} gcalEvents={gcalEvents} gcalLoading={gcalLoading} onSignUpBoard={handleSignUpBoard} onUnsignUpBoard={handleUnsignUpBoard} onDeleteEvent={handleDeleteBoardEvent} onUpdateEvent={handleUpdateBoardEvent} onCreateEvent={handleCreateBoardEvent} registeredUsers={registeredUsers} branchData={branchData} showToast={showToast} t={t} lang={lang} pendingBookDate={pendingBookDate} clearPendingBookDate={()=>setPendingBookDate(null)}/>}
-      {view==='calendar' && <CalendarView bookings={(calendarData.bookings&&calendarData.bookings.length)?calendarData.bookings:bookings} weeks={calendarData.weeks||weeks} year={year} boardEvents={boardEvents} gcalEvents={gcalEvents} clanRevealed={calendarData.clan_revealed!==false} priorityRevealed={calendarData.priority_revealed!==false} registeredUsers={registeredUsers} user={user} t={t} lang={lang} calMonth={calMonth} setCalMonth={setCalMonth} calYear={calYear} setCalYear={setCalYear} onPickDate={(ds)=>{setPendingBookDate(ds);setPhase('regular');setView('book');}}/>}
+      {view==='book' && <BookingView user={user} bookings={bookings} myBookings={myBookings} weeks={weeks} year={year} setYear={y=>{setYear(y);setFilterMonth(null);}} phase={phase} setPhase={setPhase} phaseConfig={phaseConfig} filterMonth={filterMonth} setFilterMonth={setFilterMonth} onSelectBranch={setSelectedBranch} onShowAdmin={()=>setShowAdmin(true)} onBook={handleBook} onRequestCancel={handleRequestCancel} onToggleShare={handleToggleShare} onJoinBooking={handleJoinBooking} onOpenProfile={openProfile} shareDefault={shareDefault} isFamily={isFamily} onSaveGuests={handleSaveGuests} boardEvents={boardEvents} gcalEvents={gcalEvents} gcalLoading={gcalLoading} onSignUpBoard={handleSignUpBoard} onUnsignUpBoard={handleUnsignUpBoard} onDeleteEvent={handleDeleteBoardEvent} onUpdateEvent={handleUpdateBoardEvent} onCreateEvent={handleCreateBoardEvent} registeredUsers={registeredUsers} branchData={branchData} showToast={showToast} t={t} lang={lang} pendingBookDate={pendingBookDate} clearPendingBookDate={()=>setPendingBookDate(null)}/>}
+      {view==='calendar' && <CalendarView bookings={(calendarData.bookings&&calendarData.bookings.length)?calendarData.bookings:bookings} weeks={calendarData.weeks||weeks} year={year} boardEvents={boardEvents} gcalEvents={gcalEvents} clanRevealed={calendarData.clan_revealed!==false} priorityRevealed={calendarData.priority_revealed!==false} registeredUsers={registeredUsers} user={user} t={t} lang={lang} calMonth={calMonth} setCalMonth={setCalMonth} calYear={calYear} setCalYear={setCalYear} onPickDate={(ds)=>{setPendingBookDate(ds);setPhase('regular');setView('book');}} onOpenProfile={openProfile}/>}
       {view==='feedback' && <FeedbackView t={t} lang={lang}/>}
       {view==='statistics' && user.is_admin && <StatisticsView user={user} year={year} t={t} lang={lang}/>}
-      {view==='admin' && user.is_admin && <AdminTab bookings={bookings} weeks={weeks} registeredUsers={adminUsers.length?adminUsers:registeredUsers} user={user} year={year} onApproveCancellation={handleApproveCancellation} onRejectCancellation={handleRejectCancellation} onToggleAdmin={handleToggleAdmin} onSetRole={handleSetRole} onEditBooking={handleAdminEditBooking} onDeleteBooking={handleAdminDeleteBooking} t={t} lang={lang}/>}
+      {view==='admin' && user.is_admin && <AdminTab bookings={bookings} weeks={weeks} registeredUsers={adminUsers.length?adminUsers:registeredUsers} user={user} year={year} onApproveCancellation={handleApproveCancellation} onRejectCancellation={handleRejectCancellation} onToggleAdmin={handleToggleAdmin} onSetRole={handleSetRole} onEditBooking={handleAdminEditBooking} onDeleteBooking={handleAdminDeleteBooking} onOpenProfile={openProfile} t={t} lang={lang}/>}
       <WhatsAppButton t={t}/>
     </div>
   );

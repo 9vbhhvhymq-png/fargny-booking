@@ -360,3 +360,242 @@ describe('generateWeeks — specific week spot-checks for 2026', () => {
     expect(w28.start).toBe('2026-07-11');
   });
 });
+
+// ─── Profile helpers (reimplemented from strato-deploy) ─────────────────────
+//
+// PHP side: profile_normalise_phone / profile_trim_bio / profile_shape_visible
+// in strato-deploy/api/profile.php.
+// JS side:  waLink in strato-deploy/index.html.
+
+const SKILL_SLUGS = ['garden','maintenance','cooking','pruning','cleaning'];
+
+// Mirrors profile_normalise_phone(): store '+' followed by digits only.
+function normalisePhone(raw) {
+  const s = String(raw == null ? '' : raw).trim();
+  if (s === '') return null;
+  const hadPlus = s.indexOf('+') === 0;
+  let digits = s.replace(/\D+/g, '');
+  if (digits === '') return null;
+  if (!hadPlus) {
+    if (digits.indexOf('00') === 0) digits = digits.slice(2);
+    else digits = digits.replace(/^0+/, '');
+  }
+  if (digits === '') return null;
+  return '+' + digits.slice(0, 19);
+}
+
+// Mirrors waLink(): wa.me takes bare digits, no '+' or separators.
+function waLink(phone) {
+  const digits = String(phone || '').replace(/\D+/g, '');
+  return digits ? 'https://wa.me/' + digits : null;
+}
+
+// Mirrors profile_trim_bio(): hard cap at 200 characters.
+function trimBio(raw) {
+  const bio = String(raw == null ? '' : raw).trim();
+  if (bio === '') return null;
+  return Array.from(bio).slice(0, 200).join('');
+}
+
+function nightsBetween(checkIn, checkOut) {
+  return Math.round((new Date(checkOut) - new Date(checkIn)) / 86400000);
+}
+
+// Mirrors the totals row of StaysList: past stays only.
+function stayTotals(stays) {
+  const past = stays.filter(s => !s.upcoming);
+  const sorted = [...past].sort((a, b) => a.check_in_date < b.check_in_date ? -1 : 1);
+  return {
+    stays: past.length,
+    nights: past.reduce((sum, s) => sum + nightsBetween(s.check_in_date, s.check_out_date), 0),
+    first_visit: sorted.length ? sorted[0].check_in_date : null,
+  };
+}
+
+// Mirrors profile_shape_visible(): hidden fields are dropped, never sent.
+function shapeVisible(u) {
+  const out = {
+    user_id: u.id,
+    display_name: u.display_name,
+    branch_id: u.branch_id,
+    pref_stay: u.pref_stay || 'none',
+    skills: u.skills || [],
+    stays_visible: !!u.vis_stays,
+    is_self: false,
+  };
+  if (u.vis_photo_bio) { out.photo_path = u.photo_path || null; out.bio = u.bio || null; }
+  if (u.vis_phone)     { out.phone_e164 = u.phone_e164 || null; out.email = u.email; }
+  if (u.vis_town)      { out.home_town = u.home_town || null; }
+  return out;
+}
+
+describe('phone normalisation to E.164', () => {
+  test('keeps an already-international number', () => {
+    expect(normalisePhone('+31612345678')).toBe('+31612345678');
+  });
+
+  test('strips spaces, dashes and brackets', () => {
+    expect(normalisePhone('+49 (157) 8861-1151')).toBe('+4915788611151');
+  });
+
+  test('converts a 00 international prefix', () => {
+    expect(normalisePhone('0049 157 88611151')).toBe('+4915788611151');
+  });
+
+  test('drops a national trunk zero rather than producing "+0..."', () => {
+    expect(normalisePhone('06 12 34 56 78')).toBe('+612345678');
+    expect(normalisePhone('06 12 34 56 78').startsWith('+0')).toBe(false);
+  });
+
+  test('returns null for empty or non-numeric input', () => {
+    expect(normalisePhone('')).toBeNull();
+    expect(normalisePhone('   ')).toBeNull();
+    expect(normalisePhone('geen nummer')).toBeNull();
+    expect(normalisePhone(null)).toBeNull();
+  });
+
+  test('never exceeds the 20-char column', () => {
+    expect(normalisePhone('+' + '9'.repeat(40)).length).toBeLessThanOrEqual(20);
+  });
+});
+
+describe('wa.me link builder', () => {
+  test('drops the plus and all separators', () => {
+    expect(waLink('+49 157 88611151')).toBe('https://wa.me/4915788611151');
+  });
+
+  test('returns null when there is no number', () => {
+    expect(waLink(null)).toBeNull();
+    expect(waLink('')).toBeNull();
+    expect(waLink('+')).toBeNull();
+  });
+
+  test('round-trips a normalised number', () => {
+    expect(waLink(normalisePhone('0049-157-88611151'))).toBe('https://wa.me/4915788611151');
+  });
+});
+
+describe('bio truncation', () => {
+  test('caps at 200 characters', () => {
+    expect(trimBio('a'.repeat(250))).toHaveLength(200);
+  });
+
+  test('leaves a short bio untouched', () => {
+    expect(trimBio('  Loves the garden  ')).toBe('Loves the garden');
+  });
+
+  test('empty input becomes null, not an empty string', () => {
+    expect(trimBio('   ')).toBeNull();
+    expect(trimBio(undefined)).toBeNull();
+  });
+
+  test('counts characters, not bytes, for accented text', () => {
+    expect(Array.from(trimBio('é'.repeat(250))).length).toBe(200);
+  });
+});
+
+describe('stay nights and totals', () => {
+  test('counts nights between arrival and departure', () => {
+    expect(nightsBetween('2026-10-16', '2026-10-23')).toBe(7);
+    expect(nightsBetween('2026-11-13', '2026-11-16')).toBe(3);
+  });
+
+  test('a Friday-to-Friday week is seven nights', () => {
+    expect(nightsBetween('2026-10-16', '2026-10-23')).toBe(7);
+  });
+
+  const stays = [
+    { check_in_date: '2027-01-08', check_out_date: '2027-01-15', upcoming: true },
+    { check_in_date: '2026-10-16', check_out_date: '2026-10-23', upcoming: false },
+    { check_in_date: '2025-07-04', check_out_date: '2025-07-08', upcoming: false },
+  ];
+
+  test('totals cover past stays only', () => {
+    expect(stayTotals(stays).stays).toBe(2);
+  });
+
+  test('nights sum across past stays', () => {
+    expect(stayTotals(stays).nights).toBe(11);
+  });
+
+  test('first visit is the earliest past arrival', () => {
+    expect(stayTotals(stays).first_visit).toBe('2025-07-04');
+  });
+
+  test('no stays yields zeroes and no first visit', () => {
+    expect(stayTotals([])).toEqual({ stays: 0, nights: 0, first_visit: null });
+  });
+
+  test('an upcoming-only history has no first visit yet', () => {
+    expect(stayTotals([stays[0]]).first_visit).toBeNull();
+  });
+});
+
+describe('visibility filter for a non-self viewer', () => {
+  const full = {
+    id: 42, display_name: 'Mariëlle', branch_id: 3, email: 'm@example.org',
+    phone_e164: '+31612345678', bio: 'Loves the garden', photo_path: 'uploads/u42.jpg',
+    home_town: 'Utrecht', pref_stay: 'week', skills: ['garden'],
+    vis_photo_bio: 1, vis_phone: 1, vis_town: 1, vis_stays: 0,
+  };
+
+  test('everything visible when all flags are on', () => {
+    const v = shapeVisible(full);
+    expect(v.bio).toBe('Loves the garden');
+    expect(v.photo_path).toBe('uploads/u42.jpg');
+    expect(v.phone_e164).toBe('+31612345678');
+    expect(v.email).toBe('m@example.org');
+    expect(v.home_town).toBe('Utrecht');
+  });
+
+  test('contact details are absent, not blank, when vis_phone is off', () => {
+    const v = shapeVisible({ ...full, vis_phone: 0 });
+    expect('phone_e164' in v).toBe(false);
+    expect('email' in v).toBe(false);
+  });
+
+  test('photo and bio are absent when vis_photo_bio is off', () => {
+    const v = shapeVisible({ ...full, vis_photo_bio: 0 });
+    expect('bio' in v).toBe(false);
+    expect('photo_path' in v).toBe(false);
+  });
+
+  test('home town is absent when vis_town is off', () => {
+    expect('home_town' in shapeVisible({ ...full, vis_town: 0 })).toBe(false);
+  });
+
+  test('name, branch and stay preference are always shared', () => {
+    const v = shapeVisible({ ...full, vis_photo_bio: 0, vis_phone: 0, vis_town: 0 });
+    expect(v.display_name).toBe('Mariëlle');
+    expect(v.branch_id).toBe(3);
+    expect(v.pref_stay).toBe('week');
+  });
+
+  test('stay history stays private by default', () => {
+    expect(shapeVisible(full).stays_visible).toBe(false);
+    expect(shapeVisible({ ...full, vis_stays: 1 }).stays_visible).toBe(true);
+  });
+
+  test('a member who filled nothing in still yields a usable card', () => {
+    const blank = { id: 7, display_name: 'Nieuw Lid', branch_id: 1,
+                    vis_photo_bio: 1, vis_phone: 1, vis_town: 1, vis_stays: 0 };
+    const v = shapeVisible(blank);
+    expect(v.display_name).toBe('Nieuw Lid');
+    expect(v.pref_stay).toBe('none');
+    expect(v.skills).toEqual([]);
+    expect(v.bio).toBeNull();
+  });
+
+  test('the viewer never receives a visibility flag itself', () => {
+    const v = shapeVisible(full);
+    expect('vis_phone' in v).toBe(false);
+    expect('vis_photo_bio' in v).toBe(false);
+  });
+});
+
+describe('skill slugs', () => {
+  test('unknown slugs are rejected', () => {
+    const clean = (list) => list.filter(s => SKILL_SLUGS.includes(s));
+    expect(clean(['garden', 'hacking', 'cooking'])).toEqual(['garden', 'cooking']);
+  });
+});

@@ -41,6 +41,12 @@ switch ($resource) {
         handle_users($action, $id, $method);
         break;
 
+    case 'profile':
+        require_once __DIR__ . '/profile.php';
+        require_once __DIR__ . '/bookings.php'; // booking_night_range() for stays
+        handle_profile($action, $id, $method);
+        break;
+
     case 'admin':
         require_once __DIR__ . '/admin.php';
         handle_admin($action, $id, $method);
@@ -87,6 +93,6 @@ switch ($resource) {
             'success' => true,
             'message' => 'Fargny Booking API',
             'version' => '1.0.0',
-            'endpoints' => ['auth', 'bookings', 'branches', 'users', 'admin', 'feedback', 'phase-config', 'board-events', 'payments', 'stats', 'google-calendar']
+            'endpoints' => ['auth', 'bookings', 'branches', 'users', 'profile', 'admin', 'feedback', 'phase-config', 'board-events', 'payments', 'stats', 'google-calendar']
         ]);
 }

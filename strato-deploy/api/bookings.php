@@ -733,14 +733,24 @@ function bookings_public_calendar() {
     $stmt->execute([$year]);
     $all = $stmt->fetchAll();
 
+    // This endpoint is deliberately public, so it carries only what a
+    // calendar needs: who has the house and when. Never contact details,
+    // private remarks, linked members or anything from a profile.
+    $public = function (array $b): array {
+        $fmt = format_booking(array_merge($b, ['payment_status' => 'not_paid']));
+        unset($fmt['user_email'], $fmt['remarks'], $fmt['linked_user_ids'],
+              $fmt['payment_status'], $fmt['include_cleaning']);
+        return $fmt;
+    };
+
     $visible = [];
     foreach ($all as $b) {
         if ($b['phase'] === 'regular') {
-            $visible[] = format_booking(array_merge($b, ['payment_status' => 'not_paid']));
+            $visible[] = $public($b);
         } elseif ($b['phase'] === 'clan' && $clanRevealed) {
-            $visible[] = format_booking(array_merge($b, ['payment_status' => 'not_paid']));
+            $visible[] = $public($b);
         } elseif ($b['phase'] === 'priority' && $priorityRevealed) {
-            $visible[] = format_booking(array_merge($b, ['payment_status' => 'not_paid']));
+            $visible[] = $public($b);
         }
     }
 

@@ -283,6 +283,51 @@ function ensure_role_columns() {
     } catch (Exception $e) { /* tolerate: callers fall back to is_admin */ }
 }
 
+// ---- Profiles ----------------------------------------------------------
+// Optional per-member profile fields plus their visibility flags. Applied
+// automatically so a deploy works without anyone running
+// database/007_profiles.sql. Every column is nullable or defaulted, so a
+// member who never fills anything in behaves exactly as before.
+function ensure_profile_columns() {
+    static $done = false;
+    if ($done) return;
+    $done = true;
+    $db = get_db();
+    $columns = [
+        'photo_path'            => "VARCHAR(255) DEFAULT NULL",
+        'bio'                   => "VARCHAR(200) DEFAULT NULL",
+        'phone_e164'            => "VARCHAR(20) DEFAULT NULL",
+        'pref_stay'             => "ENUM('week','midweek','weekend','none') NOT NULL DEFAULT 'none'",
+        'pref_season'           => "VARCHAR(40) DEFAULT NULL",
+        'home_town'             => "VARCHAR(80) DEFAULT NULL",
+        'languages'             => "VARCHAR(40) DEFAULT NULL",
+        'household_size'        => "TINYINT UNSIGNED DEFAULT NULL",
+        'skills'                => "JSON DEFAULT NULL",
+        'open_to_share_default' => "TINYINT(1) NOT NULL DEFAULT 0",
+        'vis_photo_bio'         => "TINYINT(1) NOT NULL DEFAULT 1",
+        'vis_phone'             => "TINYINT(1) NOT NULL DEFAULT 1",
+        'vis_town'              => "TINYINT(1) NOT NULL DEFAULT 1",
+        'vis_stays'             => "TINYINT(1) NOT NULL DEFAULT 0",
+    ];
+    foreach ($columns as $name => $ddl) {
+        try {
+            $has = $db->query("SHOW COLUMNS FROM fargny_users LIKE '$name'")->fetch();
+            if (!$has) {
+                $db->exec("ALTER TABLE fargny_users ADD COLUMN `$name` $ddl");
+            }
+        } catch (Exception $e) { /* tolerate: readers fall back to defaults */ }
+    }
+}
+
+// The skill slugs a profile may claim. Anything else is rejected.
+function profile_skill_slugs(): array {
+    return ['garden', 'maintenance', 'cooking', 'pruning', 'cleaning'];
+}
+
+function profile_stay_prefs(): array {
+    return ['week', 'midweek', 'weekend', 'none'];
+}
+
 function user_role(array $user): string {
     if (!empty($user['is_admin'])) return 'admin';
     $r = $user['role'] ?? 'shareholder';
