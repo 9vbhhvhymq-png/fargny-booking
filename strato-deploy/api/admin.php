@@ -33,6 +33,10 @@ function handle_admin(string $action, string $id, string $method) {
             if ($method !== 'GET') json_error('GET required', 405);
             admin_payment_overview();
             break;
+        case 'delete-booking':
+            if ($method !== 'POST' && $method !== 'DELETE') json_error('POST or DELETE required', 405);
+            admin_delete_booking($id);
+            break;
         default:
             json_error('Unknown admin action', 404);
     }
@@ -271,4 +275,42 @@ function admin_payment_overview() {
     $stmt = $db->prepare($sql);
     $stmt->execute($params);
     json_success($stmt->fetchAll());
+}
+
+// Remove a booking outright. Unlike a member cancellation this needs no
+// approval step — it is the admin acting directly — so the row and its
+// payment record are deleted and the dates are free again.
+function admin_delete_booking(string $idStr) {
+    require_admin();
+    $id = (int)$idStr;
+    if (!$id) json_error('Booking id required');
+
+    $body = get_json_body();
+    $note = (string)($body['admin_note'] ?? '');
+
+    $db = get_db();
+    $stmt = $db->prepare("
+        SELECT b.*, u.display_name, u.email
+        FROM fargny_bookings b
+        JOIN fargny_users u ON u.id = b.user_id
+        WHERE b.id = ? LIMIT 1
+    ");
+    $stmt->execute([$id]);
+    $booking = $stmt->fetch();
+    if (!$booking) json_error('Booking not found', 404);
+
+    $db->prepare("DELETE FROM fargny_payments WHERE booking_id = ?")->execute([$id]);
+    $db->prepare("DELETE FROM fargny_bookings WHERE id = ?")->execute([$id]);
+
+    // Let the member know their booking is gone, and why.
+    try {
+        require_once __DIR__ . '/email.php';
+        send_booking_deleted(
+            ['display_name' => $booking['display_name'], 'email' => $booking['email']],
+            $booking,
+            $note
+        );
+    } catch (Exception $e) {}
+
+    json_success(['deleted' => $id]);
 }

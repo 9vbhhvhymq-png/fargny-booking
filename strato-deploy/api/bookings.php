@@ -73,6 +73,20 @@ function gcal_night_range(array $ev): ?array {
     return [$s, $endExcl];
 }
 
+// Which week a date belongs to. A late-December date can fall in a week
+// that belongs to the following year's grid, so both are checked.
+function week_id_for_date(string $date): ?array {
+    $y = (int)substr($date, 0, 4);
+    foreach ([$y, $y - 1, $y + 1] as $cand) {
+        foreach (generate_weeks($cand) as $w) {
+            if ($date >= $w['start'] && $date <= $w['end']) {
+                return ['week_id' => $w['id'], 'year' => $cand];
+            }
+        }
+    }
+    return null;
+}
+
 // Half-open interval overlap: touching at the changeover date is allowed.
 function ranges_overlap(string $aStart, string $aEndExcl, string $bStart, string $bEndExcl): bool {
     return $aStart < $bEndExcl && $bStart < $aEndExcl;
@@ -460,23 +474,97 @@ function bookings_update(string $idStr) {
 
     $fields = [];
     $params = [];
+    // What an admin changed, so the member can be told exactly what moved.
+    $changes = [];
+    $noteYes = function($v){ return $v ? 'yes' : 'no'; };
     if (array_key_exists('open_to_share', $body)) {
+        $new = $body['open_to_share'] ? 1 : 0;
+        if ((int)$booking['open_to_share'] !== $new) {
+            $changes[] = ['label' => 'Open to share', 'from' => $noteYes($booking['open_to_share']), 'to' => $noteYes($new)];
+        }
         $fields[] = 'open_to_share = ?';
-        $params[] = $body['open_to_share'] ? 1 : 0;
+        $params[] = $new;
     }
     if (array_key_exists('remarks', $body)) {
+        $new = trim((string)$body['remarks']);
+        if ((string)($booking['remarks'] ?? '') !== $new) {
+            $changes[] = ['label' => 'Remark', 'from' => (string)($booking['remarks'] ?? '') ?: '—', 'to' => $new ?: '—'];
+        }
         $fields[] = 'remarks = ?';
-        $params[] = trim((string)$body['remarks']);
+        $params[] = $new;
     }
     if (array_key_exists('linked_user_ids', $body)) {
         $fields[] = 'linked_user_ids = ?';
         $params[] = json_encode($body['linked_user_ids'] ?: []);
     }
+
+    // Admins may also move a booking to different dates. The week it is
+    // filed under follows the new arrival date so it appears in the right
+    // row, and the new nights must not collide with another booking.
+    if ($user['is_admin'] && (array_key_exists('check_in_date', $body) || array_key_exists('check_out_date', $body))) {
+        $newIn  = $body['check_in_date']  ?? $booking['check_in_date'];
+        $newOut = $body['check_out_date'] ?? $booking['check_out_date'];
+        if (!$newIn || !$newOut) json_error('Both arrival and departure dates are required');
+        if ($newOut <= $newIn) json_error('Departure must be after arrival');
+
+        $stmt = $db->prepare("
+            SELECT id, week_id, year, check_in_date, check_out_date
+            FROM fargny_bookings
+            WHERE id <> ? AND cancellation_status NOT IN ('approved')
+        ");
+        $stmt->execute([$id]);
+        $weeksByYear = [];
+        foreach ($stmt->fetchAll() as $ex) {
+            $r = booking_night_range($ex, $weeksByYear);
+            if ($r && ranges_overlap($r[0], $r[1], $newIn, $newOut)) {
+                json_error('These dates overlap with an existing booking');
+            }
+        }
+
+        if ((string)$booking['check_in_date'] !== (string)$newIn) {
+            $changes[] = ['label' => 'Arrival', 'from' => (string)$booking['check_in_date'] ?: '—', 'to' => (string)$newIn];
+        }
+        if ((string)$booking['check_out_date'] !== (string)$newOut) {
+            $changes[] = ['label' => 'Departure', 'from' => (string)$booking['check_out_date'] ?: '—', 'to' => (string)$newOut];
+        }
+        $fields[] = 'check_in_date = ?';  $params[] = $newIn;
+        $fields[] = 'check_out_date = ?'; $params[] = $newOut;
+
+        $wk = week_id_for_date($newIn);
+        if ($wk) {
+            $fields[] = 'week_id = ?'; $params[] = $wk['week_id'];
+            $fields[] = 'year = ?';    $params[] = $wk['year'];
+        }
+    }
+
+    // Admins can also clear a pending cancellation or cancel outright.
+    if ($user['is_admin'] && array_key_exists('cancellation_status', $body)) {
+        $cs = $body['cancellation_status'];
+        if (!in_array($cs, ['none', 'pending', 'approved', 'rejected'], true)) {
+            json_error('Invalid cancellation status');
+        }
+        $fields[] = 'cancellation_status = ?'; $params[] = $cs;
+    }
+
     if (!$fields) json_error('Nothing to update');
 
     $params[] = $id;
     $db->prepare("UPDATE fargny_bookings SET " . implode(', ', $fields) . " WHERE id = ?")
        ->execute($params);
+
+    // Tell the member what an admin changed, and why. Never mail someone
+    // about their own edit, and never for a no-op.
+    if ($user['is_admin'] && $changes && (int)$booking['user_id'] !== (int)$user['id']) {
+        try {
+            $ownerStmt = $db->prepare("SELECT display_name, email FROM fargny_users WHERE id = ? LIMIT 1");
+            $ownerStmt->execute([(int)$booking['user_id']]);
+            $owner = $ownerStmt->fetch();
+            if ($owner) {
+                require_once __DIR__ . '/email.php';
+                send_booking_changed($owner, $changes, (string)($body['admin_note'] ?? ''));
+            }
+        } catch (Exception $e) {}
+    }
 
     $stmt = $db->prepare("
         SELECT b.*, u.display_name, u.email, br.name AS branch_name,

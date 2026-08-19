@@ -67,6 +67,62 @@ function send_booking_confirmation(array $user, array $booking) {
     send_email($email, "Booking Confirmed: $weekId", email_template('Booking Confirmation', $content));
 }
 
+// Tell a member that an admin changed their booking, listing what moved
+// and passing on the admin's note.
+function send_booking_changed(array $user, array $changes, string $note) {
+    $email = $user['email'] ?? '';
+    if (!$email || !$changes) return;
+
+    $rows = '';
+    foreach ($changes as $c) {
+        $rows .= '<tr>'
+               . '<td style="padding:6px 10px;color:#8B7D6B;font-size:13px;">' . htmlspecialchars($c['label']) . '</td>'
+               . '<td style="padding:6px 10px;color:#8B7D6B;font-size:13px;text-decoration:line-through;">' . htmlspecialchars($c['from']) . '</td>'
+               . '<td style="padding:6px 10px;color:#2C1810;font-size:13px;font-weight:600;">' . htmlspecialchars($c['to']) . '</td>'
+               . '</tr>';
+    }
+
+    $noteBlock = trim($note) !== ''
+        ? '<div style="margin:20px 0;padding:14px 16px;background:#FFF8E7;border-left:4px solid #C4853B;border-radius:6px;">
+             <div style="font-size:12px;font-weight:700;color:#8B7D6B;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Reason for the change</div>
+             <div style="font-size:14px;color:#2C1810;">' . nl2br(htmlspecialchars($note)) . '</div>
+           </div>'
+        : '';
+
+    $content = '<p style="color:#2C1810;font-size:15px;">Dear ' . htmlspecialchars($user['display_name'] ?? '') . ',</p>
+    <p style="color:#2C1810;font-size:15px;">Your Fargny booking has been changed by an administrator.</p>
+    <table style="width:100%;border-collapse:collapse;margin:16px 0;background:#F8F5F2;border-radius:8px;">' . $rows . '</table>'
+    . $noteBlock .
+    '<p style="color:#8B7D6B;font-size:13px;">If you have any questions about this change, please reply to
+     <a href="mailto:penningmeester@fargny.org" style="color:#3B6B9E;">penningmeester@fargny.org</a>.</p>';
+
+    send_email($email, 'Your Fargny booking has been changed', email_template('Booking Changed', $content));
+}
+
+// Tell a member that an admin removed their booking.
+function send_booking_deleted(array $user, array $booking, string $note) {
+    $email = $user['email'] ?? '';
+    if (!$email) return;
+
+    $dates = trim(($booking['check_in_date'] ?? '') . ' → ' . ($booking['check_out_date'] ?? ''));
+    $noteBlock = trim($note) !== ''
+        ? '<div style="margin:20px 0;padding:14px 16px;background:#FFF8E7;border-left:4px solid #C4853B;border-radius:6px;">
+             <div style="font-size:12px;font-weight:700;color:#8B7D6B;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Reason</div>
+             <div style="font-size:14px;color:#2C1810;">' . nl2br(htmlspecialchars($note)) . '</div>
+           </div>'
+        : '';
+
+    $content = '<p style="color:#2C1810;font-size:15px;">Dear ' . htmlspecialchars($user['display_name'] ?? '') . ',</p>
+    <p style="color:#2C1810;font-size:15px;">Your Fargny booking has been cancelled by an administrator.</p>
+    <div style="margin:16px 0;padding:14px 16px;background:#F8F5F2;border-radius:8px;font-size:15px;color:#2C1810;">'
+    . htmlspecialchars($dates) . '</div>'
+    . $noteBlock .
+    '<p style="color:#8B7D6B;font-size:13px;">If you have any questions about this, please reply to
+     <a href="mailto:penningmeester@fargny.org" style="color:#3B6B9E;">penningmeester@fargny.org</a>.</p>';
+
+    send_email($email, 'Your Fargny booking has been cancelled', email_template('Booking Cancelled', $content));
+}
+
 function send_password_reset(array $user, string $link) {
     $email = $user['email'] ?? '';
     if (!$email) return;
