@@ -369,6 +369,93 @@ function CostCalculator({booking, weeks, onSave, onClose, t, lang}){
 }
 
 // ═══════════════════════════════════════════════════════
+// BOOKING MANAGER (admin: edit dates / share / remark, or delete)
+// ═══════════════════════════════════════════════════════
+function BookingManager({bookings=[], weeks=[], onEditBooking, onDeleteBooking, t, lang}){
+  const [editBk, setEditBk] = React.useState(null);
+  const [edIn, setEdIn] = React.useState('');
+  const [edOut, setEdOut] = React.useState('');
+  const [edShare, setEdShare] = React.useState(false);
+  const [edRemark, setEdRemark] = React.useState('');
+  const [edNote, setEdNote] = React.useState('');
+  const iS={width:'100%',padding:'10px 14px',border:'1.5px solid #E0D8CF',borderRadius:10,fontSize:14,outline:'none',background:'white',fontFamily:"'DM Sans',sans-serif",boxSizing:'border-box'};
+
+  const weekFor = (b)=>{
+    const bw = (weeks||[]).find(wk=>wk.id===b.week_id);
+    if(bw) return bw;
+    const gen = generateWeeks(b.year||new Date().getFullYear());
+    return gen.find(wk=>wk.id===b.week_id);
+  };
+  const startEdit = (b)=>{
+    const w = weekFor(b);
+    setEditBk(b);
+    setEdIn(b.check_in_date || (w?w.start:''));
+    setEdOut(b.check_out_date || (w?weekDeparture(w):''));
+    setEdShare(!!b.open_to_share);
+    setEdRemark(b.remarks||'');
+    setEdNote('');
+  };
+
+  const live = (bookings||[]).filter(b=>b.cancellation_status!=='approved');
+  const sorted = [...live].sort((a,b)=>{
+    const wa=weekFor(a), wb=weekFor(b);
+    const da=a.check_in_date||(wa?wa.start:''), db2=b.check_in_date||(wb?wb.start:'');
+    return da<db2?-1:da>db2?1:0;
+  });
+
+  if(sorted.length===0) return <div style={{padding:16,textAlign:'center',color:COLORS.muted,fontSize:14}}>{t.noData}</div>;
+
+  return (
+    <div style={{display:'flex',flexDirection:'column',gap:8}}>
+      {sorted.map(b=>{
+        const w = weekFor(b);
+        const inD = b.check_in_date || (w?w.start:''), outD = b.check_out_date || (w?weekDeparture(w):'');
+        const isEditing = editBk && editBk.id===b.id;
+        const br = FAMILY_BRANCHES.find(x=>x.id===b.branch_id);
+        const badDates = !edIn || !edOut || edOut<=edIn;
+        return <div key={b.id} style={{padding:'10px 14px',background:'#F8F5F2',borderRadius:10,borderLeft:'3px solid '+(b.open_to_share?COLORS.openToShare:(br?br.color:'#ccc'))}}>
+          <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+            <div style={{flex:1,minWidth:160}}>
+              <div style={{fontSize:13,fontWeight:600,color:COLORS.text}}>{b.user_name||'—'}{b.open_to_share?' \u00B7 \u{1F91D}':''}</div>
+              <div style={{fontSize:11,color:COLORS.muted}}>{formatDate(inD,lang)} &rarr; {formatDate(outD,lang)} &middot; {getPhaseName(b.phase,t)}{b.cancellation_status==='pending'?' \u00B7 \u23F3':''}</div>
+              {b.remarks && <div style={{fontSize:11,color:COLORS.muted,fontStyle:'italic',marginTop:2}}>{'\u{1F4AC}'} {b.remarks}</div>}
+            </div>
+            <button onClick={()=>isEditing?setEditBk(null):startEdit(b)} style={{padding:'6px 12px',background:'transparent',border:'1.5px solid '+COLORS.border,borderRadius:8,fontSize:11,color:COLORS.text,cursor:'pointer',fontWeight:600,fontFamily:"'DM Sans',sans-serif"}}>{isEditing?t.close:('\u270F\uFE0F '+t.editEvent)}</button>
+            <button onClick={()=>{
+                if(!window.confirm(t.confirmDeleteBooking)) return;
+                const reason = window.prompt(t.deleteReasonPrompt+' '+(b.user_name||''), '');
+                if(reason===null) return;
+                onDeleteBooking(b, reason);
+              }} style={{padding:'6px 12px',background:'transparent',border:'1.5px solid '+COLORS.danger,borderRadius:8,fontSize:11,color:COLORS.danger,cursor:'pointer',fontWeight:600,fontFamily:"'DM Sans',sans-serif"}}>{'\u{1F5D1}'} {t.deleteBooking}</button>
+          </div>
+          {isEditing && <div style={{marginTop:10,paddingTop:10,borderTop:'1px solid '+COLORS.border,display:'flex',flexDirection:'column',gap:8}}>
+            <div style={{display:'flex',gap:8}}>
+              <div style={{flex:1}}><label style={{fontSize:11,fontWeight:600,color:COLORS.muted,display:'block',marginBottom:4}}>{t.checkIn}</label>
+                <input type="date" value={edIn} onChange={e=>setEdIn(e.target.value)} style={iS}/></div>
+              <div style={{flex:1}}><label style={{fontSize:11,fontWeight:600,color:COLORS.muted,display:'block',marginBottom:4}}>{t.checkOut}</label>
+                <input type="date" value={edOut} onChange={e=>setEdOut(e.target.value)} style={iS}/></div>
+            </div>
+            <label style={{display:'flex',alignItems:'center',gap:8,fontSize:13,color:COLORS.text,cursor:'pointer'}}>
+              <input type="checkbox" checked={edShare} onChange={()=>setEdShare(!edShare)}/>{t.openToShare}
+            </label>
+            <input type="text" placeholder={t.addRemark} value={edRemark} onChange={e=>setEdRemark(e.target.value)} style={iS}/>
+            <div>
+              <label style={{fontSize:11,fontWeight:600,color:COLORS.muted,display:'block',marginBottom:4}}>{t.adminNote}</label>
+              <textarea rows={2} placeholder={t.adminNoteHint} value={edNote} onChange={e=>setEdNote(e.target.value)} style={{...iS,resize:'vertical'}}/>
+              <div style={{fontSize:10,color:COLORS.muted,marginTop:4}}>{'\u2709'} {t.noteEmailed} {b.user_name}</div>
+            </div>
+            <button onClick={async()=>{await onEditBooking(b,{check_in_date:edIn,check_out_date:edOut,open_to_share:edShare,remarks:edRemark,admin_note:edNote});setEditBk(null);}}
+              disabled={badDates}
+              style={{padding:'9px 0',background:badDates?'#D4C5B5':COLORS.success,border:'none',borderRadius:10,fontSize:13,fontWeight:600,color:'white',cursor:badDates?'default':'pointer',fontFamily:"'DM Sans',sans-serif"}}>{t.saveEvent}</button>
+            {edIn&&edOut&&edOut<=edIn && <div style={{fontSize:11,color:COLORS.danger}}>{t.departAfterArrive}</div>}
+          </div>}
+        </div>;
+      })}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════
 // BOOKING DIALOG
 // ═══════════════════════════════════════════════════════
 function BookingDialog({week, phase, presetCheckIn, presetCheckOut, user, registeredUsers=[], onConfirm, onCancel, t, lang}){
@@ -448,22 +535,7 @@ function BookingDialog({week, phase, presetCheckIn, presetCheckOut, user, regist
 // ADMIN PANEL
 // ═══════════════════════════════════════════════════════
 function AdminPanel({registeredUsers=[], weeks, year, bookings=[], onBooked, onApproveCancellation, onRejectCancellation, onUpdatePayment, onCreateBoardEvent, onEditBooking, onDeleteBooking, onClose, t, lang}){
-  // Inline editor state for the bookings tab.
-  const [editBk, setEditBk] = React.useState(null);
-  const [edIn, setEdIn] = React.useState('');
-  const [edOut, setEdOut] = React.useState('');
-  const [edShare, setEdShare] = React.useState(false);
-  const [edRemark, setEdRemark] = React.useState('');
-  const [edNote, setEdNote] = React.useState('');
-  const startEdit = (b)=>{
-    const w = weeks.find(wk=>wk.id===b.week_id);
-    setEditBk(b);
-    setEdIn(b.check_in_date || (w?w.start:''));
-    setEdOut(b.check_out_date || (w?weekDeparture(w):''));
-    setEdShare(!!b.open_to_share);
-    setEdRemark(b.remarks||'');
-    setEdNote('');
-  };
+
   const [tab, setTab] = React.useState('manual');
   const [selUser, setSelUser] = React.useState('');
   const [selWeek, setSelWeek] = React.useState('');
@@ -521,54 +593,7 @@ function AdminPanel({registeredUsers=[], weeks, year, bookings=[], onBooked, onA
           {tabBtn('board','\u{1F451} '+t.boardTab,0)}
         </div>
 
-        {tab==='bookings' && <div style={{display:'flex',flexDirection:'column',gap:8}}>
-          {bookings.filter(b=>b.cancellation_status!=='approved').length===0
-            ? <div style={{padding:16,textAlign:'center',color:COLORS.muted,fontSize:14}}>{t.noData}</div>
-            : bookings.filter(b=>b.cancellation_status!=='approved').map(b=>{
-                const w = weeks.find(wk=>wk.id===b.week_id);
-                const inD = b.check_in_date || (w?w.start:''), outD = b.check_out_date || (w?weekDeparture(w):'');
-                const isEditing = editBk && editBk.id===b.id;
-                const br = FAMILY_BRANCHES.find(x=>x.id===b.branch_id);
-                return <div key={b.id} style={{padding:'10px 14px',background:'#F8F5F2',borderRadius:10,borderLeft:'3px solid '+(b.open_to_share?COLORS.openToShare:(br?br.color:'#ccc'))}}>
-                  <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
-                    <div style={{flex:1,minWidth:160}}>
-                      <div style={{fontSize:13,fontWeight:600,color:COLORS.text}}>{b.user_name||'—'}{b.open_to_share?' \u00B7 \u{1F91D}':''}</div>
-                      <div style={{fontSize:11,color:COLORS.muted}}>{formatDate(inD,lang)} &rarr; {formatDate(outD,lang)} &middot; {getPhaseName(b.phase,t)}
-                        {b.cancellation_status==='pending'?' \u00B7 \u23F3':''}</div>
-                      {b.remarks && <div style={{fontSize:11,color:COLORS.muted,fontStyle:'italic',marginTop:2}}>{'\u{1F4AC}'} {b.remarks}</div>}
-                    </div>
-                    <button onClick={()=>isEditing?setEditBk(null):startEdit(b)} style={{padding:'6px 12px',background:'transparent',border:'1.5px solid '+COLORS.border,borderRadius:8,fontSize:11,color:COLORS.text,cursor:'pointer',fontWeight:600,fontFamily:"'DM Sans',sans-serif"}}>{isEditing?t.close:('\u270F\uFE0F '+t.editEvent)}</button>
-                    <button onClick={()=>{
-                        if(!window.confirm(t.confirmDeleteBooking)) return;
-                        const reason = window.prompt(t.deleteReasonPrompt+' '+(b.user_name||''), '');
-                        if(reason===null) return;
-                        onDeleteBooking(b, reason);
-                      }} style={{padding:'6px 12px',background:'transparent',border:'1.5px solid '+COLORS.danger,borderRadius:8,fontSize:11,color:COLORS.danger,cursor:'pointer',fontWeight:600,fontFamily:"'DM Sans',sans-serif"}}>{'\u{1F5D1}'} {t.deleteBooking}</button>
-                  </div>
-                  {isEditing && <div style={{marginTop:10,paddingTop:10,borderTop:'1px solid '+COLORS.border,display:'flex',flexDirection:'column',gap:8}}>
-                    <div style={{display:'flex',gap:8}}>
-                      <div style={{flex:1}}><label style={{fontSize:11,fontWeight:600,color:COLORS.muted,display:'block',marginBottom:4}}>{t.checkIn}</label>
-                        <input type="date" value={edIn} onChange={e=>setEdIn(e.target.value)} style={{...iS,marginBottom:0}}/></div>
-                      <div style={{flex:1}}><label style={{fontSize:11,fontWeight:600,color:COLORS.muted,display:'block',marginBottom:4}}>{t.checkOut}</label>
-                        <input type="date" value={edOut} onChange={e=>setEdOut(e.target.value)} style={{...iS,marginBottom:0}}/></div>
-                    </div>
-                    <label style={{display:'flex',alignItems:'center',gap:8,fontSize:13,color:COLORS.text,cursor:'pointer'}}>
-                      <input type="checkbox" checked={edShare} onChange={()=>setEdShare(!edShare)}/>{t.openToShare}
-                    </label>
-                    <input type="text" placeholder={t.addRemark} value={edRemark} onChange={e=>setEdRemark(e.target.value)} style={{...iS,marginBottom:0}}/>
-                    <div>
-                      <label style={{fontSize:11,fontWeight:600,color:COLORS.muted,display:'block',marginBottom:4}}>{t.adminNote}</label>
-                      <textarea rows={2} placeholder={t.adminNoteHint} value={edNote} onChange={e=>setEdNote(e.target.value)} style={{...iS,marginBottom:0,resize:'vertical'}}/>
-                      <div style={{fontSize:10,color:COLORS.muted,marginTop:4}}>{'\u2709'} {t.noteEmailed} {b.user_name}</div>
-                    </div>
-                    <button onClick={async()=>{await onEditBooking(b,{check_in_date:edIn,check_out_date:edOut,open_to_share:edShare,remarks:edRemark,admin_note:edNote});setEditBk(null);}}
-                      disabled={!edIn||!edOut||edOut<=edIn}
-                      style={{padding:'9px 0',background:(!edIn||!edOut||edOut<=edIn)?'#D4C5B5':COLORS.success,border:'none',borderRadius:10,fontSize:13,fontWeight:600,color:'white',cursor:(!edIn||!edOut||edOut<=edIn)?'default':'pointer',fontFamily:"'DM Sans',sans-serif"}}>{t.saveEvent}</button>
-                    {edIn&&edOut&&edOut<=edIn && <div style={{fontSize:11,color:COLORS.danger}}>{t.departAfterArrive}</div>}
-                  </div>}
-                </div>;
-              })}
-        </div>}
+        {tab==='bookings' && <BookingManager bookings={bookings} weeks={weeks} onEditBooking={onEditBooking} onDeleteBooking={onDeleteBooking} t={t} lang={lang}/>}
 
         {tab==='email' && <div style={{display:'flex',flexDirection:'column',gap:14}}>
           <textarea style={{...iS,resize:'vertical'}} rows={6} placeholder={t.pasteEmail} value={emailText} onChange={e=>setEmailText(e.target.value)}/>
@@ -1427,7 +1452,7 @@ function LoginScreen({t, lang, onLangToggle, onLogin}){
 // ═══════════════════════════════════════════════════════
 // ADMIN TAB VIEW (pending cancellations + user management)
 // ═══════════════════════════════════════════════════════
-function AdminTab({bookings=[], weeks=[], registeredUsers=[], user, year, onApproveCancellation, onRejectCancellation, onToggleAdmin, onSetRole, t, lang}){
+function AdminTab({bookings=[], weeks=[], registeredUsers=[], user, year, onApproveCancellation, onRejectCancellation, onToggleAdmin, onSetRole, onEditBooking, onDeleteBooking, t, lang}){
   const pending = bookings.filter(b=>b.cancellation_status==='pending');
   const [roleFilter, setRoleFilter] = React.useState('all');
   const roleOf = u => u.role || (u.is_admin?'admin':'shareholder');
@@ -1488,6 +1513,12 @@ function AdminTab({bookings=[], weeks=[], registeredUsers=[], user, year, onAppr
               })}
             </div>
         }
+      </div>
+
+      {/* Booking management */}
+      <div style={cardStyle}>
+        <h3 style={{fontSize:16,fontWeight:700,color:COLORS.text,margin:'0 0 14px 0'}}>{'\u{1F4C5}'} {t.bookingsTab}</h3>
+        <BookingManager bookings={bookings} weeks={weeks} onEditBooking={onEditBooking} onDeleteBooking={onDeleteBooking} t={t} lang={lang}/>
       </div>
 
       {/* User management */}
@@ -1819,7 +1850,7 @@ function App(){
       {view==='calendar' && <CalendarView bookings={(calendarData.bookings&&calendarData.bookings.length)?calendarData.bookings:bookings} weeks={calendarData.weeks||weeks} year={year} boardEvents={boardEvents} gcalEvents={gcalEvents} clanRevealed={calendarData.clan_revealed!==false} priorityRevealed={calendarData.priority_revealed!==false} registeredUsers={registeredUsers} user={user} t={t} lang={lang} calMonth={calMonth} setCalMonth={setCalMonth} calYear={calYear} setCalYear={setCalYear} onPickDate={(ds)=>{setPendingBookDate(ds);setPhase('regular');setView('book');}}/>}
       {view==='feedback' && <FeedbackView t={t} lang={lang}/>}
       {view==='statistics' && user.is_admin && <StatisticsView user={user} year={year} t={t} lang={lang}/>}
-      {view==='admin' && user.is_admin && <AdminTab bookings={bookings} weeks={weeks} registeredUsers={adminUsers.length?adminUsers:registeredUsers} user={user} year={year} onApproveCancellation={handleApproveCancellation} onRejectCancellation={handleRejectCancellation} onToggleAdmin={handleToggleAdmin} onSetRole={handleSetRole} t={t} lang={lang}/>}
+      {view==='admin' && user.is_admin && <AdminTab bookings={bookings} weeks={weeks} registeredUsers={adminUsers.length?adminUsers:registeredUsers} user={user} year={year} onApproveCancellation={handleApproveCancellation} onRejectCancellation={handleRejectCancellation} onToggleAdmin={handleToggleAdmin} onSetRole={handleSetRole} onEditBooking={handleAdminEditBooking} onDeleteBooking={handleAdminDeleteBooking} t={t} lang={lang}/>}
       <WhatsAppButton t={t}/>
     </div>
   );
