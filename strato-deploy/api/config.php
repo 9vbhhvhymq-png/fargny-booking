@@ -191,12 +191,53 @@ function require_admin(): array {
 // REGULAR_MONTHS_AHEAD in index.html — keep the two in step.
 if (!defined('REGULAR_MONTHS_AHEAD')) define('REGULAR_MONTHS_AHEAD', 3);
 
+// Weeks run Friday to Friday: arrive Friday, depart the next Friday.
+// 5 = Friday in PHP's 'w' (0 = Sunday).
+if (!defined('WEEK_START_DOW')) define('WEEK_START_DOW', 5);
+
+// Weeks used to start on Saturday. Bookings stored with a week id but no
+// explicit dates would silently shift when the grid moved, so their real
+// dates are pinned once, using the old definition, before the shift.
+// Naturally idempotent: after the backfill no NULL-date rows remain.
+function backfill_week_dates() {
+    $db = get_db();
+    $stmt = $db->query("
+        SELECT id, week_id, year FROM fargny_bookings
+        WHERE check_in_date IS NULL OR check_out_date IS NULL
+    ");
+    $rows = $stmt->fetchAll();
+    if (!$rows) return;
+
+    $legacyByYear = [];
+    $upd = $db->prepare("UPDATE fargny_bookings SET check_in_date = ?, check_out_date = ? WHERE id = ?");
+    foreach ($rows as $r) {
+        $y = (int)$r['year'];
+        if (!isset($legacyByYear[$y])) $legacyByYear[$y] = generate_weeks_saturday($y);
+        foreach ($legacyByYear[$y] as $w) {
+            if ($w['id'] === $r['week_id']) {
+                // Whole week = 7 nights, departing the day after week end.
+                $dep = new DateTime($w['end']);
+                $dep->modify('+1 day');
+                $upd->execute([$w['start'], $dep->format('Y-m-d'), $r['id']]);
+                break;
+            }
+        }
+    }
+}
+
+function generate_weeks_saturday(int $year): array {
+    return build_weeks($year, 6);
+}
+
 // ---- Week generation (mirrors frontend logic) ----
 function generate_weeks(int $year): array {
+    return build_weeks($year, WEEK_START_DOW);
+}
+
+function build_weeks(int $year, int $startDow): array {
     $weeks = [];
     $d = new DateTime("$year-01-01");
-    // Find first Saturday
-    while ((int)$d->format('w') !== 6) {
+    while ((int)$d->format('w') !== $startDow) {
         $d->modify('+1 day');
     }
     $weekNum = 1;
@@ -325,3 +366,4 @@ function seed_admin_if_needed() {
 
 // Try to seed admin (silently ignore if tables don't exist yet)
 try { seed_admin_if_needed(); } catch (Exception $e) {}
+try { backfill_week_dates(); } catch (Exception $e) {}

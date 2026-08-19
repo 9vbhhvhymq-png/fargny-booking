@@ -215,11 +215,9 @@ function bookings_create() {
             if ($today < $cfg['priority_start'] || $today > $cfg['priority_end']) {
                 json_error('Priority booking phase is not currently open');
             }
-        } elseif ($phase === 'regular') {
-            if ($today < $cfg['regular_start']) {
-                json_error('Regular booking phase has not opened yet');
-            }
         }
+        // Regular booking is open all year round; the rolling horizon below
+        // is the only restriction, so there is no phase window to check.
     }
 
     // ---- Booking rules ----
