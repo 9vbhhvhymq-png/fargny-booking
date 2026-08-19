@@ -3,6 +3,10 @@ name: Deploy to Strato
 # Deploys strato-deploy/ to Strato shared hosting via SFTP
 # whenever changes are pushed to main.
 #
+# Uses the OpenSSH client that is already present on the runner, so the
+# job installs nothing. Installing lftp through apt repeatedly hung for
+# ten minutes or more on a slow package mirror, which stalled deploys.
+#
 # Required GitHub Secrets:
 #   FTP_HOST  — e.g. 512020809.ssh.w1.strato.hosting
 #   FTP_USER  — e.g. STU834724242
@@ -21,34 +25,80 @@ jobs:
   deploy:
     name: SFTP Deploy
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install lftp
-        run: sudo apt-get update && sudo apt-get install -y lftp
+      - name: Build the upload batch
+        env:
+          REMOTE_DIR: /STRATO-apps/wordpress_01/app/booking
+        run: |
+          set -euo pipefail
+          cd strato-deploy
 
-      - name: Upload via lftp (SFTP)
+          # Same exclusions as before: never ship credentials, the wipe
+          # script, git metadata or dependencies. Files already on the
+          # server that are not in the repo are left alone (no delete).
+          find . -type d \
+                 -not -path './node_modules*' \
+            | sed 's|^\./||' | grep -vx '\.' | sort > /tmp/dirs.txt
+
+          find . -type f \
+                 ! -name '.env' \
+                 ! -name 'wipe-*.php' \
+                 ! -name '.git*' \
+                 -not -path './node_modules/*' \
+            | sed 's|^\./||' | sort > /tmp/files.txt
+
+          {
+            echo "cd $REMOTE_DIR"
+            # '-' lets a mkdir fail quietly when the directory exists.
+            # Sorted order guarantees a parent is created before its child.
+            while IFS= read -r d; do printf -- '-mkdir "%s"\n' "$d"; done < /tmp/dirs.txt
+            while IFS= read -r f; do printf -- 'put "%s" "%s"\n' "$f" "$f"; done < /tmp/files.txt
+            echo "bye"
+          } > /tmp/sftp-batch.txt
+
+          echo "Directories: $(wc -l < /tmp/dirs.txt), files: $(wc -l < /tmp/files.txt)"
+
+      - name: Upload via sftp
         env:
           SFTP_HOST: ${{ secrets.FTP_HOST }}
           SFTP_USER: ${{ secrets.FTP_USER }}
-          LFTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          SFTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
         run: |
+          set -euo pipefail
           HOST="$(printf '%s' "$SFTP_HOST" | tr -d '[:space:]')"
           USER_="$(printf '%s' "$SFTP_USER" | tr -d '[:space:]')"
 
-          lftp --env-password -u "$USER_" "sftp://$HOST" <<'LFTP_EOF'
-          set sftp:auto-confirm yes
-          set net:timeout 20
-          set net:max-retries 2
-          set net:reconnect-interval-base 5
-          mirror --reverse \
-                 --verbose \
-                 --exclude-glob .env \
-                 --exclude-glob wipe-*.php \
-                 --exclude-glob .git* \
-                 --exclude-glob node_modules/ \
-                 ./strato-deploy/ /STRATO-apps/wordpress_01/app/booking/
-          bye
-          LFTP_EOF
+          # Feed the password to ssh without sshpass: OpenSSH calls
+          # SSH_ASKPASS when it has no terminal, which setsid guarantees.
+          printf '#!/bin/sh\nprintf "%%s\\n" "$SFTP_PASSWORD"\n' > /tmp/askpass.sh
+          chmod 700 /tmp/askpass.sh
+          export SSH_ASKPASS=/tmp/askpass.sh
+          export SSH_ASKPASS_REQUIRE=force
+          export DISPLAY=:0
+
+          for attempt in 1 2 3; do
+            echo "Upload attempt $attempt"
+            if setsid timeout 480 sftp \
+                  -b /tmp/sftp-batch.txt \
+                  -o BatchMode=no \
+                  -o StrictHostKeyChecking=no \
+                  -o UserKnownHostsFile=/dev/null \
+                  -o LogLevel=ERROR \
+                  -o ConnectTimeout=30 \
+                  -o ServerAliveInterval=15 \
+                  "$USER_@$HOST"; then
+              echo "Upload complete"
+              exit 0
+            fi
+            echo "Attempt $attempt failed"
+            [ "$attempt" -lt 3 ] && sleep $((attempt * 10))
+          done
+
+          echo "SFTP upload failed after 3 attempts" >&2
+          exit 1
+        shell: bash
