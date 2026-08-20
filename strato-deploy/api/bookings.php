@@ -256,6 +256,19 @@ function bookings_create() {
     // ---- Booking rules ----
     $branchId = (int)$user['branch_id'];
 
+    // The house cannot be booked for nights that have already gone. This
+    // applies to everyone, admins included: recording a stay after the fact
+    // is an edit, not a booking.
+    {
+        $weeksForYear = generate_weeks($year);
+        $wk = null;
+        foreach ($weeksForYear as $w) { if ($w['id'] === $weekId) { $wk = $w; break; } }
+        $arrivalDate = $checkIn ?: ($wk['start'] ?? null);
+        if ($arrivalDate && $arrivalDate < $today) {
+            json_error('That stay is in the past — bookings can only start from today');
+        }
+    }
+
     // Clan: max 1 per branch per year
     if ($phase === 'clan') {
         $stmt = $db->prepare("SELECT id FROM fargny_bookings WHERE year = ? AND branch_id = ? AND phase = 'clan' AND cancellation_status NOT IN ('approved') LIMIT 1");
