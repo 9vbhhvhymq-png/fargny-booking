@@ -180,22 +180,6 @@ function stayRange(week, kind){
   end.setDate(end.getDate()+shape.nights);
   return { start: toISO(start), end: toISO(end), nights: shape.nights };
 }
-// Which shape a pair of dates corresponds to, so a pre-filled range (for
-// instance from clicking a free day in the calendar) selects the right one.
-function stayKindForDates(week, start, end){
-  if(week && start && end){
-    for(const k of STAY_KINDS){
-      const r = stayRange(week,k);
-      if(r && r.start===start && r.end===end) return k;
-    }
-    // Fall back to the shortest shape that begins on the chosen day.
-    for(const k of ['weekend','midweek']){
-      const r = stayRange(week,k);
-      if(r && r.start===start) return k;
-    }
-  }
-  return 'week';
-}
 
 // ---- "Via old calendar" -------------------------------------------------
 // A stay counts as an old-calendar booking only when it was NOT created in
@@ -209,7 +193,7 @@ function gcalNightRange(ev){
   if(raw > s) return [s, raw];
   const d = parseISO(s); d.setDate(d.getDate()+1); return [s, toISO(d)];
 }
-function bookingNightRanges(bookings, weekFor){
+function bookingNightEntries(bookings, weekFor){
   const out = [];
   (bookings||[]).forEach(b=>{
     if(b.cancellation_status==='approved') return;
@@ -218,17 +202,32 @@ function bookingNightRanges(bookings, weekFor){
       const w = weekFor ? weekFor(b) : null;
       if(w){ if(!s) s = w.start; if(!e) e = weekDeparture(w); }
     }
-    if(s && e) out.push([s,e]);
+    if(s && e) out.push({start:s, end:e, booking:b});
   });
   return out;
 }
-function isLegacyGcal(ev, ranges){
+// The same stay is often in both places: booked here, and still sitting in
+// the shared Google Calendar. Those are one stay and must be shown once.
+// Overlap alone is NOT enough to conclude that — a booking that collides
+// with an old-calendar entry is a different stay, and hiding it would erase
+// a real reservation from the calendar. The entry must also carry the
+// booker's name.
+function nameMatchesBooking(title, booking){
+  const t = String(title||'').toLowerCase();
+  const who = String((booking && booking.user_name) || '').trim().toLowerCase();
+  if(!t || !who) return false;
+  if(t.includes(who)) return true;
+  const first = who.split(/\s+/)[0] || '';
+  return first.length > 2 && t.includes(first);
+}
+function isLegacyGcal(ev, entries){
   const r = gcalNightRange(ev); if(!r) return false;
-  return !(ranges||[]).some(([s,e]) => r[0] < e && s < r[1]);
+  return !(entries||[]).some(en =>
+    r[0] < en.end && en.start < r[1] && nameMatchesBooking(ev.title, en.booking));
 }
 function legacyGcalOnly(gcalEvents, bookings, weekFor){
-  const ranges = bookingNightRanges(bookings, weekFor);
-  return (gcalEvents||[]).filter(ev=>isLegacyGcal(ev, ranges));
+  const entries = bookingNightEntries(bookings, weekFor);
+  return (gcalEvents||[]).filter(ev=>isLegacyGcal(ev, entries));
 }
 function generateWeeks(year) {
   const weeks=[]; let d=new Date(year,0,1);
@@ -1022,15 +1021,16 @@ function BookingManager({bookings=[], weeks=[], onEditBooking, onDeleteBooking, 
 // ═══════════════════════════════════════════════════════
 // BOOKING DIALOG
 // ═══════════════════════════════════════════════════════
-function BookingDialog({week, phase, presetCheckIn, presetCheckOut, user, registeredUsers=[], shareDefault=false, onConfirm, onCancel, t, lang}){
+function BookingDialog({week, phase, availableKinds, user, registeredUsers=[], shareDefault=false, onConfirm, onCancel, t, lang}){
   // Pre-filled from the member's profile preference; still theirs to change.
   const [openToShare, setOpenToShare] = React.useState(!!shareDefault);
   const [remark, setRemark] = React.useState('');
   const [linked, setLinked] = React.useState([]);
   const isRegular = phase==='regular';
   // A stay is one of exactly three shapes, all anchored to the Friday the
-  // week starts on. There are no free-form dates.
-  const [stayKind, setStayKind] = React.useState(()=>stayKindForDates(week, presetCheckIn, presetCheckOut));
+  // week starts on. Only the shapes whose nights are still free are offered.
+  const kinds = (availableKinds && availableKinds.length) ? availableKinds : STAY_KINDS;
+  const [stayKind, setStayKind] = React.useState(kinds[0]);
   const range = stayRange(week, stayKind);
   const others = registeredUsers.filter(u=>u.email!==user.email);
   const toggleLinked = (email)=>setLinked(prev=>prev.includes(email)?prev.filter(e=>e!==email):[...prev,email]);
@@ -1054,7 +1054,7 @@ function BookingDialog({week, phase, presetCheckIn, presetCheckOut, user, regist
         {isRegular && <div style={{marginBottom:16}}>
           <div style={{fontSize:11,fontWeight:600,color:COLORS.muted,marginBottom:6}}>{t.stayTypeLabel}</div>
           <div style={{display:'flex',flexDirection:'column',gap:6}}>
-            {STAY_KINDS.map(k=>{
+            {kinds.map(k=>{
               const r = stayRange(week,k), on = stayKind===k;
               return <button key={k} type="button" onClick={()=>setStayKind(k)}
                 style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,padding:'10px 14px',borderRadius:10,
@@ -1232,6 +1232,7 @@ function WeekRow({week, myBooking, allBookings=[], gcalEvents=[], boardEvents=[]
   const userBranch = FAMILY_BRANCHES.find(b=>b.id===user.branch_id);
   const isPending = hasMyBooking && myBooking.cancellation_status==='pending';
   let weekBookedByOther=false, weekNotOpen=false, partialBlock=null, specialEvent=null;
+  let availableKinds=STAY_KINDS;
   if(!hasMyBooking && (phase==='regular'||phase==='clan'||phase==='priority')){
     const confirmed = allBookings.filter(b=>b.week_id===week.id && b.cancellation_status!=='approved');
     // For regular bookings, work out per-day occupancy from gcal so a single
@@ -1270,18 +1271,16 @@ function WeekRow({week, myBooking, allBookings=[], gcalEvents=[], boardEvents=[]
     // day after the last free night, so a changeover is bookable.
     const blockedCount = allDays.filter(d=>dayBlocked[d]).length;
     if(phase==='regular'){
-      if(blockedCount===allDays.length) weekBookedByOther = true;
+      // A stay is one of three fixed shapes, so what matters is which of them
+      // still fit — not how many days are free. A week with free days but no
+      // free shape cannot be booked at all.
+      availableKinds = STAY_KINDS.filter(k=>{
+        const r = stayRange(week,k); if(!r) return false;
+        return !allDays.some(d=>d>=r.start && d<r.end && dayBlocked[d]);
+      });
+      if(availableKinds.length===0) weekBookedByOther = true;
       else if(blockedCount>0){
-        // Compute the longest free contiguous range so we can suggest one.
-        let bestStart=null, bestEnd=null, bestLen=0, curStart=null;
-        for(const d of allDays){
-          if(!dayBlocked[d]){
-            if(!curStart) curStart=d;
-            const len = (new Date(d)-new Date(curStart))/(1000*60*60*24)+1;
-            if(len>bestLen){ bestLen=len; bestStart=curStart; bestEnd=d; }
-          } else { curStart=null; }
-        }
-        partialBlock = { freeStart: bestStart, freeEnd: bestEnd?addDay(bestEnd,1):bestEnd, blockedCount, totalCount: allDays.length };
+        partialBlock = { kinds: availableKinds, blockedCount, totalCount: allDays.length };
       }
       if(!isWeekBookableRegular(week.start)) weekNotOpen=true;
     } else {
@@ -1344,7 +1343,7 @@ function WeekRow({week, myBooking, allBookings=[], gcalEvents=[], boardEvents=[]
         </div>}
         {!hasMyBooking && reason && !specialEvent && occupants.length===0 && <div style={{fontSize:11,color:weekBookedByOther?COLORS.danger:'#B0A090',marginTop:2}}>{reason}</div>}
         {!hasMyBooking && specialEvent && <div style={{fontSize:11,color:COLORS.board,marginTop:2,fontWeight:600}}>{'\u2728'} {specialEvent.name} &middot; {t.reservedForEvent}</div>}
-        {!hasMyBooking && bookable && partialBlock && <div style={{fontSize:11,color:'#C4853B',marginTop:2}}>{'\u26A0\uFE0F'} {partialBlock.blockedCount}/{partialBlock.totalCount} {lang==='nl'?'dagen geboekt \u2014 kies aangepaste data':'days taken \u2014 pick custom dates'} ({formatDate(partialBlock.freeStart,lang)} \u2192 {formatDate(partialBlock.freeEnd,lang)})</div>}
+        {!hasMyBooking && bookable && partialBlock && <div style={{fontSize:11,color:'#C4853B',marginTop:2}}>{'\u26A0\uFE0F'} {partialBlock.blockedCount}/{partialBlock.totalCount} {lang==='nl'?'nachten bezet \u2014 nog vrij:':'nights taken \u2014 still free:'} {partialBlock.kinds.map(k=>stayKindLabel(k,t)).join(', ')}</div>}
       </div>
       <div style={{display:'flex',gap:6}}>
         {!hasMyBooking && shareBooking && onJoinBooking && <button onClick={()=>onJoinBooking(shareBooking, joinedShare)} style={{padding:'6px 14px',background:joinedShare?'transparent':COLORS.openToShare,border:'1.5px solid '+COLORS.openToShare,borderRadius:8,fontSize:12,color:joinedShare?'#8A6D00':'#4A3B00',cursor:'pointer',fontWeight:600,whiteSpace:'nowrap',fontFamily:"'DM Sans',sans-serif"}}>{joinedShare?('\u2715 '+t.leaveBooking):('\u{1F91D} '+t.joinBooking)}</button>}
@@ -1352,7 +1351,7 @@ function WeekRow({week, myBooking, allBookings=[], gcalEvents=[], boardEvents=[]
         {hasMyBooking && !isPending && onToggleShare && <button onClick={()=>onToggleShare(myBooking)} title={t.openToShare} style={{padding:'6px 14px',background:myBooking.open_to_share?COLORS.openToShare+'22':'transparent',border:'1.5px solid '+(myBooking.open_to_share?COLORS.openToShare:'#D4C5B5'),borderRadius:8,fontSize:12,color:myBooking.open_to_share?'#8A6D00':COLORS.muted,cursor:'pointer',fontWeight:600,fontFamily:"'DM Sans',sans-serif"}}>{myBooking.open_to_share?('\u{1F91D} '+t.makePrivate):t.makeShare}</button>}
         {hasMyBooking && !isPending && <button onClick={()=>onRequestCancel(myBooking)} style={{padding:'6px 14px',background:'transparent',border:'1.5px solid #D4C5B5',borderRadius:8,fontSize:12,color:COLORS.muted,cursor:'pointer',fontWeight:500,fontFamily:"'DM Sans',sans-serif"}}>{t.requestCancel}</button>}
         {isPending && <span style={{fontSize:11,color:COLORS.warning,fontWeight:600}}>{'\u23F3'}</span>}
-        {!hasMyBooking && bookable && <button onClick={()=>onBook(week, partialBlock)} style={{padding:'6px 14px',background:COLORS.success,border:'none',borderRadius:8,fontSize:12,color:COLORS.white,cursor:'pointer',fontWeight:600,fontFamily:"'DM Sans',sans-serif"}}>{t.bookBtn}</button>}
+        {!hasMyBooking && bookable && <button onClick={()=>onBook(week, availableKinds)} style={{padding:'6px 14px',background:COLORS.success,border:'none',borderRadius:8,fontSize:12,color:COLORS.white,cursor:'pointer',fontWeight:600,fontFamily:"'DM Sans',sans-serif"}}>{t.bookBtn}</button>}
       </div>
     </div>
   );
@@ -1407,7 +1406,12 @@ function BookingView({user, bookings=[], myBookings=[], weeks, year, setYear, ph
     if(!w){ if(clearPendingBookDate) clearPendingBookDate(); return; }
     setFilterMonth(w.month);
     setHighlightWeekId(w.id);
-    setBookDialog({week:w, phase:'regular', presetCheckIn:pendingBookDate});
+    // Clicking a free day in the calendar opens that week; the dialog then
+    // offers whichever shapes are still free, defaulting to the one that
+    // starts on the day clicked if there is one.
+    setBookDialog({week:w, phase:'regular', availableKinds:
+      STAY_KINDS.filter(k=>{const r=stayRange(w,k);return r && r.start===pendingBookDate;}).concat(
+      STAY_KINDS.filter(k=>{const r=stayRange(w,k);return r && r.start!==pendingBookDate;}))});
     setTimeout(()=>{
       const el = document.querySelector('[data-week-id="'+w.id+'"]');
       if(el && el.scrollIntoView) el.scrollIntoView({behavior:'smooth', block:'center'});
@@ -1423,7 +1427,7 @@ function BookingView({user, bookings=[], myBookings=[], weeks, year, setYear, ph
   return (
     <div className="fargny-booking-layout" style={{display:'flex',maxWidth:1200,margin:'0 auto',gap:24,padding:'24px 20px'}}>
       {costBooking && <CostCalculator booking={costBooking} weeks={weeks} onSave={(id,guests,total,includeCleaning)=>{onSaveGuests(id,guests,includeCleaning);setCostBooking(null);}} onClose={()=>setCostBooking(null)} t={t} lang={lang}/>}
-      {bookDialog && <BookingDialog week={bookDialog.week} phase={bookDialog.phase} presetCheckIn={bookDialog.presetCheckIn} presetCheckOut={bookDialog.presetCheckOut} user={user} registeredUsers={registeredUsers} shareDefault={shareDefault} onConfirm={opts=>{onBook(bookDialog.week,bookDialog.phase,opts);setBookDialog(null);}} onCancel={()=>setBookDialog(null)} t={t} lang={lang}/>}
+      {bookDialog && <BookingDialog week={bookDialog.week} phase={bookDialog.phase} availableKinds={bookDialog.availableKinds} user={user} registeredUsers={registeredUsers} shareDefault={shareDefault} onConfirm={opts=>{onBook(bookDialog.week,bookDialog.phase,opts);setBookDialog(null);}} onCancel={()=>setBookDialog(null)} t={t} lang={lang}/>}
 
       {/* SIDEBAR */}
       <div className="fargny-sidebar" style={{width:300,flexShrink:0,display:'flex',flexDirection:'column',gap:16}}>
@@ -1607,7 +1611,7 @@ function BookingView({user, bookings=[], myBookings=[], weeks, year, setYear, ph
             : filteredWeeks.reduce((acc,week,i)=>{
                 const prevMonth = i>0 ? filteredWeeks[i-1].month : -1;
                 if(week.month!==prevMonth) acc.push(<div key={'month-'+week.month} style={{padding:'14px 16px 6px 16px',fontSize:13,fontWeight:700,color:COLORS.muted,textTransform:'uppercase',letterSpacing:'0.5px',borderTop:i>0?'1px solid #F0EBE5':'none',marginTop:i>0?4:0}}>{MONTHS_SHORT[lang][week.month]} {year}</div>);
-                acc.push(<WeekRow key={week.id} week={week} myBooking={myBookingMap[week.id]} allBookings={bookings} gcalEvents={gcalEvents} boardEvents={boardEvents} onBook={(w,partial)=>setBookDialog({week:w,phase,presetCheckIn:partial?partial.freeStart:null,presetCheckOut:partial?partial.freeEnd:null})} onRequestCancel={onRequestCancel} onToggleShare={onToggleShare} onJoinBooking={onJoinBooking} onOpenProfile={onOpenProfile} isFamily={isFamily} onJoinSpecialEvent={(ev)=>{setPhase('board');setEventDetail(ev);}} user={user} phase={phase} clanBookedByBranch={clanBookedByBranch} userBookedPriority={userBookedPriority} phaseActive={getPhaseStatus(phase,phaseConfig)==='active'||user.is_admin} t={t} lang={lang} highlight={highlightWeekId===week.id}/>);
+                acc.push(<WeekRow key={week.id} week={week} myBooking={myBookingMap[week.id]} allBookings={bookings} gcalEvents={gcalEvents} boardEvents={boardEvents} onBook={(w,kinds)=>setBookDialog({week:w,phase,availableKinds:kinds})} onRequestCancel={onRequestCancel} onToggleShare={onToggleShare} onJoinBooking={onJoinBooking} onOpenProfile={onOpenProfile} isFamily={isFamily} onJoinSpecialEvent={(ev)=>{setPhase('board');setEventDetail(ev);}} user={user} phase={phase} clanBookedByBranch={clanBookedByBranch} userBookedPriority={userBookedPriority} phaseActive={getPhaseStatus(phase,phaseConfig)==='active'||user.is_admin} t={t} lang={lang} highlight={highlightWeekId===week.id}/>);
                 return acc;
               },[])}
           </div>

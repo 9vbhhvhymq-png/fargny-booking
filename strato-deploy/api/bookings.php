@@ -233,6 +233,9 @@ function bookings_create() {
     $cfg = $stmt->fetch();
 
     $today = date('Y-m-d');
+    // Admins may ignore *timing* rules (phase windows, the 3-month horizon).
+    // They may never ignore a collision: the house cannot hold two stays on
+    // the same night, whoever is booking.
     $isAdmin = (bool)$user['is_admin'];
 
     // ---- Phase validation (admin can bypass timing) ----
@@ -270,7 +273,7 @@ function bookings_create() {
     // Clan/Priority book a whole week. The house can only be used once per
     // week, so a week already taken by ANY booking, a Google Calendar event,
     // or a special event is not bookable — even during the blind phases.
-    if (($phase === 'clan' || $phase === 'priority') && !$isAdmin) {
+    if ($phase === 'clan' || $phase === 'priority') {
         $weeks = generate_weeks($year);
         $week = null;
         foreach ($weeks as $w) { if ($w['id'] === $weekId) { $week = $w; break; } }
@@ -306,7 +309,7 @@ function bookings_create() {
     }
 
     // Regular: arrival must fall inside the booking window, max 7 nights.
-    if ($phase === 'regular' && !$isAdmin) {
+    if ($phase === 'regular') {
         $weeks = generate_weeks($year);
         $week = null;
         foreach ($weeks as $w) {
@@ -318,7 +321,7 @@ function bookings_create() {
         // Check the date actually being reserved: with custom dates that is
         // the chosen arrival, otherwise the start of the week.
         $arrival = $checkIn ?: ($week['start'] ?? null);
-        if ($arrival && new DateTime($arrival) > $horizon) {
+        if (!$isAdmin && $arrival && new DateTime($arrival) > $horizon) {
             json_error('These dates are not yet open for regular booking — bookings open '
                        . REGULAR_MONTHS_AHEAD . ' months ahead');
         }
