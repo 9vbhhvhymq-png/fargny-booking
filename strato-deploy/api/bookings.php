@@ -73,6 +73,22 @@ function gcal_night_range(array $ev): ?array {
     return [$s, $endExcl];
 }
 
+// The three shapes a stay may take, measured from the Friday the week
+// starts on. Mirrors STAY_SHAPES in index.html — keep the two in step.
+function stay_shapes(array $week): array {
+    $shapes = ['week' => [0, 7], 'midweek' => [3, 4], 'weekend' => [0, 3]];
+    $out = [];
+    foreach ($shapes as $kind => [$offset, $nights]) {
+        $start = date_plus_days($week['start'], $offset);
+        $out[$kind] = [
+            'start'  => $start,
+            'end'    => date_plus_days($start, $nights),
+            'nights' => $nights,
+        ];
+    }
+    return $out;
+}
+
 // Which week a date belongs to. A late-December date can fall in a week
 // that belongs to the following year's grid, so both are checked.
 function week_id_for_date(string $date): ?array {
@@ -306,12 +322,21 @@ function bookings_create() {
             json_error('These dates are not yet open for regular booking — bookings open '
                        . REGULAR_MONTHS_AHEAD . ' months ahead');
         }
-        if ($checkIn && $checkOut) {
-            $ci = new DateTime($checkIn);
-            $co = new DateTime($checkOut);
-            $nights = (int)$ci->diff($co)->days;
-            if ($nights > 7) json_error('Maximum 7 nights for regular bookings');
-            if ($nights < 1) json_error('Check-out must be after check-in');
+        // A stay must be one of exactly three shapes, all measured from the
+        // Friday the week starts on: a week (Fri-Fri, 7 nights), a midweek
+        // (Mon-Fri, 4 nights) or a weekend (Fri-Mon, 3 nights).
+        if ($checkIn && $checkOut && $week) {
+            $shapes = stay_shapes($week);
+            $match = null;
+            foreach ($shapes as $kind => $r) {
+                if ($r['start'] === $checkIn && $r['end'] === $checkOut) { $match = $kind; break; }
+            }
+            if (!$match) {
+                $options = [];
+                foreach ($shapes as $kind => $r) $options[] = "$kind {$r['start']} to {$r['end']}";
+                json_error('A stay must be a week, a midweek or a weekend. Available for this week: '
+                           . implode('; ', $options));
+            }
         }
 
         // Nights we are about to reserve, as [start, departure). Without

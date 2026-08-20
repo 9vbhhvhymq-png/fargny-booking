@@ -302,6 +302,8 @@ function ensure_profile_columns() {
         'home_town'             => "VARCHAR(80) DEFAULT NULL",
         'languages'             => "VARCHAR(40) DEFAULT NULL",
         'household_size'        => "TINYINT UNSIGNED DEFAULT NULL",
+        // Who they usually come with: member ids, not a headcount.
+        'travels_with'          => "JSON DEFAULT NULL",
         'skills'                => "JSON DEFAULT NULL",
         'open_to_share_default' => "TINYINT(1) NOT NULL DEFAULT 0",
         'vis_photo_bio'         => "TINYINT(1) NOT NULL DEFAULT 1",

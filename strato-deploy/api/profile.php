@@ -99,6 +99,19 @@ function profile_clean_languages($raw): ?string {
 
 // ---- Shaping -----------------------------------------------------------
 
+// Member ids this person usually travels with. Unknown or malformed
+// entries are dropped rather than trusted.
+function profile_decode_ids($raw): array {
+    $decoded = json_decode((string)($raw ?? '[]'), true);
+    if (!is_array($decoded)) return [];
+    $out = [];
+    foreach ($decoded as $id) {
+        $id = (int)$id;
+        if ($id > 0 && !in_array($id, $out, true)) $out[] = $id;
+    }
+    return $out;
+}
+
 function profile_decode_skills($raw): array {
     $decoded = json_decode((string)($raw ?? '[]'), true);
     return is_array($decoded) ? array_values($decoded) : [];
@@ -127,7 +140,7 @@ function profile_shape_full(array $u): array {
         'pref_season'           => $u['pref_season'] ?? null,
         'home_town'             => $u['home_town'] ?? null,
         'languages'             => $u['languages'] ?? null,
-        'household_size'        => isset($u['household_size']) && $u['household_size'] !== null ? (int)$u['household_size'] : null,
+        'travels_with'          => profile_decode_ids($u['travels_with'] ?? null),
         'skills'                => profile_decode_skills($u['skills'] ?? null),
         'open_to_share_default' => !empty($u['open_to_share_default']),
         'vis_photo_bio'         => !empty($u['vis_photo_bio']),
@@ -155,7 +168,7 @@ function profile_shape_visible(array $u): array {
         'pref_stay'             => $u['pref_stay'] ?? 'none',
         'pref_season'           => $u['pref_season'] ?? null,
         'languages'             => $u['languages'] ?? null,
-        'household_size'        => isset($u['household_size']) && $u['household_size'] !== null ? (int)$u['household_size'] : null,
+        'travels_with'          => profile_decode_ids($u['travels_with'] ?? null),
         'skills'                => profile_decode_skills($u['skills'] ?? null),
         'open_to_share_default' => !empty($u['open_to_share_default']),
         'stays_visible'         => !empty($u['vis_stays']),
@@ -229,14 +242,24 @@ function profile_update_me() {
         }
         $set('skills', profile_clean_skills($body['skills']));
     }
-    if (array_key_exists('household_size', $body)) {
-        $n = $body['household_size'];
-        if ($n === null || $n === '') $set('household_size', null);
-        else {
-            $n = (int)$n;
-            if ($n < 1 || $n > 50) json_error('Household size must be between 1 and 50');
-            $set('household_size', $n);
+    if (array_key_exists('travels_with', $body)) {
+        $ids = is_array($body['travels_with']) ? $body['travels_with'] : [];
+        $clean = [];
+        foreach ($ids as $id) {
+            $id = (int)$id;
+            // Nobody travels with themselves, and duplicates are pointless.
+            if ($id > 0 && $id !== (int)$user['id'] && !in_array($id, $clean, true)) $clean[] = $id;
         }
+        if ($clean) {
+            $ph = implode(',', array_fill(0, count($clean), '?'));
+            $chk = $db->prepare("SELECT id FROM fargny_users WHERE id IN ($ph)");
+            $chk->execute($clean);
+            $found = array_map('intval', array_column($chk->fetchAll(), 'id'));
+            foreach ($clean as $id) {
+                if (!in_array($id, $found, true)) json_error('Unknown member in travels-with list');
+            }
+        }
+        $set('travels_with', json_encode(array_values($clean)));
     }
     foreach (['open_to_share_default', 'vis_photo_bio', 'vis_phone', 'vis_town', 'vis_stays'] as $flag) {
         if (array_key_exists($flag, $body)) $set($flag, $body[$flag] ? 1 : 0);

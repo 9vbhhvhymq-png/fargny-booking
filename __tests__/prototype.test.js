@@ -599,3 +599,74 @@ describe('skill slugs', () => {
     expect(clean(['garden', 'hacking', 'cooking'])).toEqual(['garden', 'cooking']);
   });
 });
+
+// ─── Stay shapes (mirrors STAY_SHAPES in index.html / stay_shapes in PHP) ───
+
+const STAY_SHAPES = { week:{offset:0,nights:7}, midweek:{offset:3,nights:4}, weekend:{offset:0,nights:3} };
+
+function shiftISO(iso, days) {
+  const d = new Date(iso + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+function stayRange(weekStart, kind) {
+  const shape = STAY_SHAPES[kind];
+  if (!weekStart || !shape) return null;
+  const start = shiftISO(weekStart, shape.offset);
+  return { start, end: shiftISO(start, shape.nights), nights: shape.nights };
+}
+
+const dow = (iso) => new Date(iso + 'T00:00:00Z').getUTCDay(); // 0 Sun … 5 Fri
+
+describe('stay shapes', () => {
+  const friday = '2026-10-16'; // a Friday
+
+  test('a week runs Friday to Friday, seven nights', () => {
+    const r = stayRange(friday, 'week');
+    expect(r).toEqual({ start: '2026-10-16', end: '2026-10-23', nights: 7 });
+    expect(dow(r.start)).toBe(5);
+    expect(dow(r.end)).toBe(5);
+  });
+
+  test('a midweek runs Monday to Friday, four nights', () => {
+    const r = stayRange(friday, 'midweek');
+    expect(r).toEqual({ start: '2026-10-19', end: '2026-10-23', nights: 4 });
+    expect(dow(r.start)).toBe(1);
+    expect(dow(r.end)).toBe(5);
+  });
+
+  test('a weekend runs Friday to Monday, three nights', () => {
+    const r = stayRange(friday, 'weekend');
+    expect(r).toEqual({ start: '2026-10-16', end: '2026-10-19', nights: 3 });
+    expect(dow(r.start)).toBe(5);
+    expect(dow(r.end)).toBe(1);
+  });
+
+  test('there are exactly three shapes', () => {
+    expect(Object.keys(STAY_SHAPES).sort()).toEqual(['midweek', 'week', 'weekend']);
+  });
+
+  test('nights match the gap between the dates', () => {
+    for (const kind of Object.keys(STAY_SHAPES)) {
+      const r = stayRange(friday, kind);
+      expect(nightsBetween(r.start, r.end)).toBe(r.nights);
+    }
+  });
+
+  test('weekend and midweek together fill the week without overlapping', () => {
+    const we = stayRange(friday, 'weekend');
+    const mw = stayRange(friday, 'midweek');
+    expect(we.end).toBe(mw.start);                       // they meet on the Monday
+    expect(we.nights + mw.nights).toBe(stayRange(friday,'week').nights);
+    expect(mw.end).toBe(stayRange(friday, 'week').end);  // both finish on the Friday
+  });
+
+  test('an arbitrary range is not one of the three shapes', () => {
+    const shapes = Object.keys(STAY_SHAPES).map(k => stayRange(friday, k));
+    const matches = (s, e) => shapes.some(r => r.start === s && r.end === e);
+    expect(matches('2026-10-16', '2026-10-23')).toBe(true);   // the week
+    expect(matches('2026-10-17', '2026-10-20')).toBe(false);  // Sat to Tue
+    expect(matches('2026-10-16', '2026-10-18')).toBe(false);  // two nights
+  });
+});
