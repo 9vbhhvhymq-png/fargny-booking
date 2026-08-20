@@ -1039,6 +1039,7 @@ function BookingDialog({week, phase, presetCheckIn, presetCheckOut, user, regist
   const effOut = range ? range.end : '';
   const nightCount = range ? range.nights : 0;
   const effLabel = (effIn && effOut) ? (formatDate(effIn,lang)+' \u2014 '+formatDate(effOut,lang)) : weekLabel;
+  const iS={width:'100%',padding:'10px 14px',border:'1.5px solid '+COLORS.border,borderRadius:10,fontSize:14,outline:'none',fontFamily:"'DM Sans',sans-serif",boxSizing:'border-box'};
 
   return (
     <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.3)',zIndex:300,display:'flex',alignItems:'center',justifyContent:'center'}} onClick={onCancel}>
