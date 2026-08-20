@@ -2088,17 +2088,19 @@ function App(){
   // Own photo, for the header avatar. Absent until a profile is filled in.
   const [myPhotoUrl, setMyPhotoUrl] = React.useState(null);
   const [shareDefault, setShareDefault] = React.useState(false);
+  // Runs for signed-in members only: `user` is null on the login screen.
   React.useEffect(()=>{
+    if(!user) return;
     api('profile/me').then(p=>{
       if(!p) return;
       setMyPhotoUrl(p.photo_url);
       setShareDefault(!!p.open_to_share_default);
     }).catch(()=>{});
-  },[]);
+  },[user && user.id]);
   const openProfile = React.useCallback((userId, isSelf)=>{
     if(!userId) return;
-    setProfileCard({userId, self: !!isSelf || userId===user.id});
-  },[user.id]);
+    setProfileCard({userId, self: !!isSelf || (!!user && userId===user.id)});
+  },[user && user.id]);
   const [calendarData, setCalendarData] = React.useState({bookings:[],clanRevealed:true,priorityRevealed:true});
   const [gcalEvents, setGcalEvents] = React.useState([]);
   const [gcalLoading, setGcalLoading] = React.useState(true);
