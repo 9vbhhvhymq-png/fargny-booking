@@ -904,47 +904,13 @@ function Directory({onOpenProfile, t, lang}){
   );
 }
 
-function FamilyView({user, onOpenProfile, showToast, t, lang}){
-  const [sub, setSub] = React.useState('me');
+// The Family tab is the member directory, nothing else. Your own profile
+// is reached by clicking your name in the header, which opens your card
+// with its Edit button.
+function FamilyView({onOpenProfile, t, lang}){
   return (
     <div style={{maxWidth:900,margin:'0 auto',padding:'0 20px'}}>
-      <div style={{display:'flex',gap:0,marginBottom:20,background:COLORS.bg,borderRadius:10,padding:3,maxWidth:340}}>
-        {[['me',t.myProfile],['dir',t.directory]].map(([k,label])=>
-          <button key={k} onClick={()=>setSub(k)} style={{flex:1,padding:'9px 0',border:'none',borderRadius:8,background:sub===k?COLORS.white:'transparent',color:sub===k?COLORS.text:COLORS.muted,fontWeight:sub===k?600:400,cursor:'pointer',fontSize:13,boxShadow:sub===k?'0 1px 4px rgba(0,0,0,0.08)':'none',fontFamily:"'DM Sans',sans-serif"}}>{label}</button>)}
-      </div>
-      {sub==='me'
-        ? <MyProfilePanel user={user} showToast={showToast} t={t} lang={lang}/>
-        : <Directory onOpenProfile={onOpenProfile} t={t} lang={lang}/>}
-    </div>
-  );
-}
-
-// The "My profile" pane: the edit form inline, so it is one click away.
-function MyProfilePanel({user, showToast, t, lang}){
-  const [profile, setProfile] = React.useState(null);
-  const [error, setError] = React.useState('');
-  React.useEffect(()=>{ api('profile/me').then(setProfile).catch(e=>setError(e.message)); },[]);
-  if(error) return <div style={{fontSize:13,color:COLORS.danger}}>{error}</div>;
-  if(!profile) return <div style={{fontSize:13,color:COLORS.muted}}>{t.loading}</div>;
-  const branch = FAMILY_BRANCHES.find(b=>b.id===profile.branch_id);
-  return (
-    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(300px,1fr))',gap:16,alignItems:'start'}}>
-      <div style={{background:COLORS.white,borderRadius:14,padding:20,boxShadow:'0 1px 8px rgba(0,0,0,0.04)'}}>
-        <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:16}}>
-          <Avatar user={{display_name:profile.display_name,branch_id:profile.branch_id,photo_url:profile.photo_url}} size={56}/>
-          <div>
-            <div style={{fontSize:16,fontWeight:700,color:COLORS.text,fontFamily:"'Playfair Display',Georgia,serif"}}>{profile.display_name}</div>
-            <div style={{fontSize:11,color:branch?branch.color:COLORS.muted,fontWeight:600}}>{branch?branch.name:''}</div>
-          </div>
-        </div>
-        <ContactButtons email={profile.email} phone={profile.phone_e164} t={t}/>
-        <ProfileEditForm profile={profile} showToast={showToast} t={t} lang={lang}
-          onCancel={()=>{}} onSaved={setProfile}/>
-      </div>
-      <div style={{background:COLORS.white,borderRadius:14,padding:20,boxShadow:'0 1px 8px rgba(0,0,0,0.04)'}}>
-        <div style={{fontSize:11,fontWeight:700,color:COLORS.muted,textTransform:'uppercase',letterSpacing:'1px',marginBottom:12}}>{t.staysTitle}</div>
-        <StaysList userId={0} t={t} lang={lang}/>
-      </div>
+      <Directory onOpenProfile={onOpenProfile} t={t} lang={lang}/>
     </div>
   );
 }
@@ -2429,7 +2395,7 @@ function App(){
 
   return (
     <div style={{minHeight:'100vh',background:COLORS.bg,fontFamily:"'DM Sans','Segoe UI',sans-serif"}}>
-      {view==='family' && <FamilyView user={user} onOpenProfile={openProfile} showToast={showToast} t={t} lang={lang}/>}
+      {view==='family' && <FamilyView onOpenProfile={openProfile} t={t} lang={lang}/>}
       {profileCard && <ProfileCard userId={profileCard.userId} self={profileCard.self} onClose={()=>setProfileCard(null)} showToast={showToast} onOpenProfile={openProfile} t={t} lang={lang}/>}
       {selectedBranch && <BranchMembersPanel branch={selectedBranch} onClose={()=>setSelectedBranch(null)} t={t} members={branchMembers} onOpenProfile={openProfile}/>}
       {showAdmin && <AdminPanel registeredUsers={registeredUsers} weeks={weeks} year={year} bookings={bookings} onBooked={handleAdminBook} onApproveCancellation={handleApproveCancellation} onRejectCancellation={handleRejectCancellation} onUpdatePayment={handleUpdatePayment} onCreateBoardEvent={handleCreateBoardEvent} onEditBooking={handleAdminEditBooking} onDeleteBooking={handleAdminDeleteBooking} onClose={()=>setShowAdmin(false)} t={t} lang={lang}/>}
