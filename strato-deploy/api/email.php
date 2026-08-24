@@ -3,6 +3,13 @@
 // Email: send booking confirmations and notifications
 // ============================================================
 
+// Who a member should reply to when an admin changed or cancelled their
+// booking. Payment questions still go to the treasurer; this is about the
+// booking itself, so it points at the administrator.
+if (!defined('ADMIN_CONTACT_EMAIL')) {
+    define('ADMIN_CONTACT_EMAIL', env('ADMIN_EMAIL', 'moritz@fromageot.eu'));
+}
+
 function send_email(string $to, string $subject, string $body) {
     $from = env('MAIL_FROM', 'noreply@fargny.org');
     $headers = [
@@ -94,7 +101,7 @@ function send_booking_changed(array $user, array $changes, string $note) {
     <table style="width:100%;border-collapse:collapse;margin:16px 0;background:#F8F5F2;border-radius:8px;">' . $rows . '</table>'
     . $noteBlock .
     '<p style="color:#8B7D6B;font-size:13px;">If you have any questions about this change, please reply to
-     <a href="mailto:penningmeester@fargny.org" style="color:#3B6B9E;">penningmeester@fargny.org</a>.</p>';
+     <a href="mailto:' . ADMIN_CONTACT_EMAIL . '" style="color:#3B6B9E;">' . ADMIN_CONTACT_EMAIL . '</a>.</p>';
 
     send_email($email, 'Your Fargny booking has been changed', email_template('Booking Changed', $content));
 }
@@ -118,7 +125,7 @@ function send_booking_deleted(array $user, array $booking, string $note) {
     . htmlspecialchars($dates) . '</div>'
     . $noteBlock .
     '<p style="color:#8B7D6B;font-size:13px;">If you have any questions about this, please reply to
-     <a href="mailto:penningmeester@fargny.org" style="color:#3B6B9E;">penningmeester@fargny.org</a>.</p>';
+     <a href="mailto:' . ADMIN_CONTACT_EMAIL . '" style="color:#3B6B9E;">' . ADMIN_CONTACT_EMAIL . '</a>.</p>';
 
     send_email($email, 'Your Fargny booking has been cancelled', email_template('Booking Cancelled', $content));
 }

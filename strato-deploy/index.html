@@ -711,6 +711,23 @@ function ProfileEditForm({profile, onSaved, onCancel, showToast, t, lang}){
   );
 }
 
+// Email and WhatsApp buttons for a profile. Each appears only when that
+// detail is actually there, so a member who gave no number gets one button.
+function ContactButtons({email, phone, t}){
+  const wa = waLink(phone);
+  if(!wa && !email) return null;
+  return (
+    <div style={{display:'flex',gap:8,marginBottom:14}}>
+      {email && <a href={'mailto:'+email}
+        style={{flex:1,textAlign:'center',padding:'10px 0',background:COLORS.bg,color:COLORS.text,borderRadius:10,textDecoration:'none',fontWeight:600,fontSize:13}}>
+        {'\u2709\uFE0F'} {t.messageEmail}</a>}
+      {wa && <a href={wa} target="_blank" rel="noopener noreferrer"
+        style={{flex:1,textAlign:'center',padding:'10px 0',background:'#25D366',color:'white',borderRadius:10,textDecoration:'none',fontWeight:600,fontSize:13}}>
+        {'\u{1F4AC}'} {t.messageWhatsApp}</a>}
+    </div>
+  );
+}
+
 function ProfileCard({userId, self, onClose, showToast, onOpenProfile, t, lang}){
   const [profile, setProfile] = React.useState(null);
   // Names for the "usually travels with" chips.
@@ -744,7 +761,6 @@ function ProfileCard({userId, self, onClose, showToast, onOpenProfile, t, lang})
 
   const chip = (text,key)=><span key={key} style={{fontSize:11,padding:'4px 10px',borderRadius:14,background:COLORS.bg,color:COLORS.text}}>{text}</span>;
   const canSeeStays = self ? true : (profile && profile.stays_visible);
-  const wa = shown && shown.phone_e164 ? waLink(shown.phone_e164) : null;
 
   return (
     <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.3)',zIndex:220,display:'flex',alignItems:'center',justifyContent:'center',padding:16}} onClick={onClose}>
@@ -807,10 +823,7 @@ function ProfileCard({userId, self, onClose, showToast, onOpenProfile, t, lang})
                 </div>
               </div>}
 
-              {!self && (wa||shown.email) && <div style={{display:'flex',gap:8,marginBottom:14}}>
-                {wa && <a href={wa} target="_blank" rel="noopener noreferrer" style={{flex:1,textAlign:'center',padding:'10px 0',background:'#25D366',color:'white',borderRadius:10,textDecoration:'none',fontWeight:600,fontSize:13}}>{t.messageWhatsApp}</a>}
-                {shown.email && <a href={'mailto:'+shown.email} style={{flex:1,textAlign:'center',padding:'10px 0',background:COLORS.bg,color:COLORS.text,borderRadius:10,textDecoration:'none',fontWeight:600,fontSize:13}}>{t.messageEmail}</a>}
-              </div>}
+              <ContactButtons email={shown.email} phone={shown.phone_e164} t={t}/>
 
               <div style={{marginBottom:14}}>
                 <div style={{fontSize:11,fontWeight:700,color:COLORS.muted,textTransform:'uppercase',letterSpacing:'1px',marginBottom:8}}>{t.staysTitle}</div>
@@ -924,6 +937,7 @@ function MyProfilePanel({user, showToast, t, lang}){
             <div style={{fontSize:11,color:branch?branch.color:COLORS.muted,fontWeight:600}}>{branch?branch.name:''}</div>
           </div>
         </div>
+        <ContactButtons email={profile.email} phone={profile.phone_e164} t={t}/>
         <ProfileEditForm profile={profile} showToast={showToast} t={t} lang={lang}
           onCancel={()=>{}} onSaved={setProfile}/>
       </div>
