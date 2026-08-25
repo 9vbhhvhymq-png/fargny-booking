@@ -310,6 +310,9 @@ function ensure_profile_columns() {
         'vis_phone'             => "TINYINT(1) NOT NULL DEFAULT 1",
         'vis_town'              => "TINYINT(1) NOT NULL DEFAULT 1",
         'vis_stays'             => "TINYINT(1) NOT NULL DEFAULT 0",
+        // When this member finished (or skipped) the walkthrough. NULL means
+        // they have not seen it yet, so everyone gets it once.
+        'onboarded_at'          => "DATETIME DEFAULT NULL",
     ];
     foreach ($columns as $name => $ddl) {
         try {

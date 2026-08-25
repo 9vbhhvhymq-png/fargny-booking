@@ -37,3 +37,8 @@ ALTER TABLE `fargny_users`
   ADD COLUMN `vis_phone`     TINYINT(1) NOT NULL DEFAULT 1,
   ADD COLUMN `vis_town`      TINYINT(1) NOT NULL DEFAULT 1,
   ADD COLUMN `vis_stays`     TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'stay history is private by default';
+
+-- Walkthrough -----------------------------------------------------------
+-- NULL means the member has not seen the walkthrough yet.
+ALTER TABLE `fargny_users`
+  ADD COLUMN `onboarded_at` DATETIME DEFAULT NULL COMMENT 'when the walkthrough was finished or skipped';

@@ -147,6 +147,7 @@ function profile_shape_full(array $u): array {
         'vis_phone'             => !empty($u['vis_phone']),
         'vis_town'              => !empty($u['vis_town']),
         'vis_stays'             => !empty($u['vis_stays']),
+        'onboarded_at'          => $u['onboarded_at'] ?? null,
         'is_self'               => true,
     ];
 }
@@ -274,6 +275,9 @@ function profile_update_me() {
     foreach (['open_to_share_default', 'vis_photo_bio', 'vis_phone', 'vis_town', 'vis_stays'] as $flag) {
         if (array_key_exists($flag, $body)) $set($flag, $body[$flag] ? 1 : 0);
     }
+    // Stamped when the walkthrough is finished or skipped, so it is offered
+    // once. Reopening it by hand does not clear the stamp.
+    if (!empty($body['onboarded'])) $set('onboarded_at', date('Y-m-d H:i:s'));
 
     if (!$fields) json_error('Nothing to update');
 
