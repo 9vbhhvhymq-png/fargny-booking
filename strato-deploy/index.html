@@ -2251,19 +2251,21 @@ function App(){
   // Own photo, for the header avatar. Absent until a profile is filled in.
   const [myPhotoUrl, setMyPhotoUrl] = React.useState(null);
   const [shareDefault, setShareDefault] = React.useState(false);
-  // Offered once to everyone who has not seen it, existing accounts included,
-  // and reopenable from the header at any time.
+  // Shown on every sign-in during the trial, not just the first one, so the
+  // rules stay in front of people. Dismissible, and reopenable from the header.
   const [showTour, setShowTour] = React.useState(false);
   // Runs for signed-in members only: `user` is null on the login screen.
   React.useEffect(()=>{
     if(!user) return;
+    setShowTour(true);
     api('profile/me').then(p=>{
       if(!p) return;
       setMyPhotoUrl(p.photo_url);
       setShareDefault(!!p.open_to_share_default);
-      if(!p.onboarded_at) setShowTour(true);
     }).catch(()=>{});
   },[user && user.id]);
+  // Still records the first time it was seen — nothing gates on that now, but
+  // it is the flag to check again if we go back to showing it once.
   const finishTour = React.useCallback(async ()=>{
     setShowTour(false);
     try { await api('profile/me',{method:'PUT',body:JSON.stringify({onboarded:true})}); }
