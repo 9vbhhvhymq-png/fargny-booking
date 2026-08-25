@@ -213,6 +213,16 @@ function profile_update_me() {
         $params[] = $val;
     };
 
+    // A member may correct their own name. Every display of a name is a
+    // live join on this column, so one edit propagates everywhere.
+    $renamedTo = null;
+    if (array_key_exists('display_name', $body)) {
+        $name = trim((string)$body['display_name']);
+        if ($name === '') json_error('Your name cannot be empty');
+        $name = function_exists('mb_substr') ? mb_substr($name, 0, 100) : substr($name, 0, 100);
+        $set('display_name', $name);
+        $renamedTo = $name;
+    }
     if (array_key_exists('bio', $body))        $set('bio', profile_trim_bio($body['bio']));
     if (array_key_exists('phone_e164', $body)) $set('phone_e164', profile_normalise_phone($body['phone_e164']));
     if (array_key_exists('home_town', $body)) {
@@ -269,6 +279,16 @@ function profile_update_me() {
 
     $params[] = (int)$user['id'];
     $db->prepare("UPDATE fargny_users SET " . implode(', ', $fields) . " WHERE id = ?")->execute($params);
+
+    // The shareholder roster holds a second copy of the name, used by the
+    // registration dropdown and the "connected to" line. Keep it in step so
+    // the two never disagree. Family members have no roster row.
+    if ($renamedTo !== null) {
+        try {
+            $db->prepare("UPDATE fargny_shareholders SET full_name = ? WHERE user_id = ?")
+               ->execute([$renamedTo, (int)$user['id']]);
+        } catch (Exception $e) {}
+    }
 
     $stmt = $db->prepare("SELECT * FROM fargny_users WHERE id = ? LIMIT 1");
     $stmt->execute([(int)$user['id']]);

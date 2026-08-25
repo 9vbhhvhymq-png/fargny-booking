@@ -20,7 +20,38 @@ function handle_users(string $action, string $id, string $method) {
         users_set_role((int)$action);
         return;
     }
+    if ($id === 'name' && ($method === 'POST' || $method === 'PUT')) {
+        users_set_name((int)$action);
+        return;
+    }
     json_error('Not found', 404);
+}
+
+// Correct a member's name on their behalf. Members can rename themselves
+// from their profile; this exists because corrections tend to be reported
+// to an admin rather than acted on by the member.
+function users_set_name(int $userId) {
+    require_admin();
+    if (!$userId) json_error('user id required');
+
+    $body = get_json_body();
+    $name = trim((string)($body['display_name'] ?? ''));
+    if ($name === '') json_error('Name cannot be empty');
+    $name = function_exists('mb_substr') ? mb_substr($name, 0, 100) : substr($name, 0, 100);
+
+    $db = get_db();
+    $stmt = $db->prepare("SELECT id FROM fargny_users WHERE id = ? LIMIT 1");
+    $stmt->execute([$userId]);
+    if (!$stmt->fetch()) json_error('User not found', 404);
+
+    $db->prepare("UPDATE fargny_users SET display_name = ? WHERE id = ?")->execute([$name, $userId]);
+    // Keep the shareholder roster's copy in step; see profile_update_me().
+    try {
+        $db->prepare("UPDATE fargny_shareholders SET full_name = ? WHERE user_id = ?")
+           ->execute([$name, $userId]);
+    } catch (Exception $e) {}
+
+    json_success(['id' => $userId, 'display_name' => $name]);
 }
 
 function users_list() {
