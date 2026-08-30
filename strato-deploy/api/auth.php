@@ -29,6 +29,11 @@ function handle_auth(string $action, string $method) {
             if ($method !== 'POST') json_error('POST required', 405);
             auth_reset_password();
             break;
+        case 'gate':
+            if ($method === 'GET') gate_public_config();
+            elseif ($method === 'POST') gate_submit_answer();
+            else json_error('GET or POST required', 405);
+            break;
         default:
             json_error('Unknown auth action', 404);
     }
@@ -124,6 +129,10 @@ function auth_login() {
 }
 
 function auth_register() {
+    // Before anything else, and for both paths below: a screen in the UI
+    // stops nobody who can POST at this endpoint directly.
+    require_gate_pass();
+
     $body = get_json_body();
     if (($body['role'] ?? '') === 'family_member') {
         auth_register_family_member($body);

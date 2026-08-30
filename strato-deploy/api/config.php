@@ -122,10 +122,16 @@ function json_error(string $message, int $code = 400) {
     json_response(['success' => false, 'error' => $message], $code);
 }
 
+// Parsed once per request: php://input is not reliably re-readable on every
+// PHP/SAPI combination, and the gate check now reads the body before the
+// handler does. One body per request, so caching it is always correct.
 function get_json_body(): array {
+    static $cached = null;
+    if ($cached !== null) return $cached;
     $raw = file_get_contents('php://input');
     $data = json_decode($raw, true);
-    return is_array($data) ? $data : [];
+    $cached = is_array($data) ? $data : [];
+    return $cached;
 }
 
 // ---- Auth helpers ----

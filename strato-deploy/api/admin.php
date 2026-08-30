@@ -37,6 +37,11 @@ function handle_admin(string $action, string $id, string $method) {
             if ($method !== 'POST' && $method !== 'DELETE') json_error('POST or DELETE required', 405);
             admin_delete_booking($id);
             break;
+        case 'gate':
+            if ($method === 'GET') gate_admin_get();
+            elseif ($method === 'POST' || $method === 'PUT') gate_admin_save();
+            else json_error('GET or POST required', 405);
+            break;
         default:
             json_error('Unknown admin action', 404);
     }

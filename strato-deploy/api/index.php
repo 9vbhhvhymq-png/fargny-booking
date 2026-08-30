@@ -4,6 +4,8 @@
 // ============================================================
 
 require_once __DIR__ . '/config.php';
+// Small, and needed by auth, branches and admin alike.
+require_once __DIR__ . '/gate.php';
 cors_headers();
 
 // Parse the request path relative to /api/

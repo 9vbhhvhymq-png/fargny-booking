@@ -43,6 +43,9 @@ Strato shared hosting.
   open_to_share, remarks, linked_user_ids (JSON), cancellation_status.
 - `payments` — one per booking; `guest_data` = 7 nights of `{child04,
   child59, adult}`. Also `shareholders`, `board_events`/`board_signups`.
+- `settings` — key/value; holds the registration gate's `gate_question_en`
+  /`_nl` and `gate_answer`. Plus `gate_tokens` (1-hour passes) and
+  `gate_attempts` (rate limiting). All created by `ensure_gate_tables()`.
 
 ### Invariants
 
@@ -58,6 +61,11 @@ Strato shared hosting.
    by `require_shareholder()`, not just hidden in the UI.
 7. **No profile data in `bookings/public-calendar`**; hidden fields dropped in
    PHP.
+8. **Registration and the shareholder roster sit behind the family question**
+   — `require_gate_pass()` in `auth_register()` and `branches_shareholders()`.
+   It **fails open** while `gate_answer` is empty, so an unset answer means no
+   gate at all, not a locked-out family. The answer lives in the DB, set from
+   Admin → Registration gate; never hardcode it (the repo is public).
 
 ## Conventions
 

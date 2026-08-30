@@ -73,6 +73,11 @@ function branches_list() {
 }
 
 function branches_shareholders() {
+    // Registration needs this list before anyone has an account, so it
+    // cannot require_auth() — but the family's names are not for strangers
+    // either. The registration gate stands in for a login here.
+    require_gate_pass();
+
     // Return all shareholders with their registration status
     $db = get_db();
     $shareholders = $db->query("
