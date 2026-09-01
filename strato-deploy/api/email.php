@@ -60,9 +60,20 @@ function send_booking_confirmation(array $user, array $booking) {
         ? 'You will receive a payment request separately. Transfer the amount to penningmeester@fargny.org. In case of questions, send an email to penningmeester@fargny.org.'
         : 'Payment details will follow once you fill in the guest information. In case of questions, send an email to penningmeester@fargny.org.';
 
+    // The family's booking number: the year, then this booking's place in
+    // that year. Quoted first because it is what people refer to.
+    $number = $booking['booking_number'] ?? null;
+    $nameWithNumber = ($user['display_name'] ?? $user['email'])
+                      . ($number ? ' (' . $number . ')' : '');
+    $numberRow = $number
+        ? '<tr><td style="padding:8px 12px;color:#8B7D6B;font-size:13px;">Booking number</td><td style="padding:8px 12px;color:#2C1810;font-size:15px;font-weight:700;">' . htmlspecialchars($number) . '</td></tr>'
+        : '';
+
     $content = '<p style="color:#2C1810;font-size:15px;">Dear ' . htmlspecialchars($user['display_name'] ?? $user['email']) . ',</p>
-    <p style="color:#2C1810;font-size:15px;">Your booking has been confirmed.</p>
+    <p style="color:#2C1810;font-size:15px;">Your booking has been confirmed'
+    . ($number ? ' as <strong>' . htmlspecialchars($nameWithNumber) . '</strong>' : '') . '.</p>
     <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+    ' . $numberRow . '
     <tr><td style="padding:8px 12px;color:#8B7D6B;font-size:13px;">Week</td><td style="padding:8px 12px;color:#2C1810;font-size:13px;font-weight:600;">' . htmlspecialchars($weekId) . '</td></tr>
     <tr><td style="padding:8px 12px;color:#8B7D6B;font-size:13px;">Phase</td><td style="padding:8px 12px;color:#2C1810;font-size:13px;font-weight:600;">' . htmlspecialchars($phase . $adminBooked) . '</td></tr>
     <tr><td style="padding:8px 12px;color:#8B7D6B;font-size:13px;">Check-in</td><td style="padding:8px 12px;color:#2C1810;font-size:13px;">' . htmlspecialchars($checkIn) . '</td></tr>
@@ -71,7 +82,8 @@ function send_booking_confirmation(array $user, array $booking) {
     </table>
     <p style="color:#8B7D6B;font-size:13px;">' . $paymentLine . '</p>';
 
-    send_email($email, "Booking Confirmed: $weekId", email_template('Booking Confirmation', $content));
+    $subject = $number ? "Booking Confirmed ($number): $weekId" : "Booking Confirmed: $weekId";
+    send_email($email, $subject, email_template('Booking Confirmation', $content));
 }
 
 // Tell a member that an admin changed their booking, listing what moved

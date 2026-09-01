@@ -113,6 +113,8 @@ function format_booking(array $b): array {
         'id'                  => (int)$b['id'],
         'week_id'             => $b['week_id'],
         'year'                => (int)$b['year'],
+        // "26-31" — shown after the member's name, as on the old calendar.
+        'booking_number'      => format_booking_number($b['year'] ?? null, $b['booking_seq'] ?? null),
         'user_id'             => (int)$b['user_id'],
         'user_name'           => $b['display_name'] ?? '',
         'user_email'          => $b['email'] ?? '',
@@ -134,6 +136,7 @@ function format_booking(array $b): array {
 
 function bookings_list() {
     $user = require_auth();
+    ensure_booking_numbers();
     $year = (int)($_GET['year'] ?? date('Y'));
     $db = get_db();
 
@@ -439,6 +442,10 @@ function bookings_create() {
     ]);
     $bookingId = (int)$db->lastInsertId();
 
+    // The family's booking number, claimed straight away so it can go out
+    // with the confirmation.
+    $seq = assign_booking_number($bookingId, $year);
+
     // Create default payment record
     $db->prepare("INSERT INTO fargny_payments (booking_id) VALUES (?)")->execute([$bookingId]);
 
@@ -450,6 +457,7 @@ function bookings_create() {
         foreach ($weeks as $w) { if ($w['id'] === $weekId) { $week = $w; break; } }
         send_booking_confirmation($user, [
             'id' => $bookingId, 'week_id' => $weekId, 'phase' => $phase,
+            'booking_number' => format_booking_number($year, $seq),
             'check_in_date' => $checkIn ?: ($week['start'] ?? ''), 'check_out_date' => $checkOut ?: ($week['end'] ?? ''),
         ]);
     } catch (Exception $e) {
@@ -500,6 +508,7 @@ function bookings_cancel(string $idStr) {
 // NOT editable here — those go through cancel + re-book.
 function bookings_update(string $idStr) {
     $user = require_shareholder('Family members cannot change bookings');
+    ensure_booking_numbers();
     $id = (int)$idStr;
     $body = get_json_body();
     $db = get_db();
@@ -517,6 +526,8 @@ function bookings_update(string $idStr) {
     $params = [];
     // What an admin changed, so the member can be told exactly what moved.
     $changes = [];
+    // Set when an edit moves the stay into a different year.
+    $movedToYear = null;
     $noteYes = function($v){ return $v ? 'yes' : 'no'; };
     if (array_key_exists('open_to_share', $body)) {
         $new = $body['open_to_share'] ? 1 : 0;
@@ -575,6 +586,7 @@ function bookings_update(string $idStr) {
         if ($wk) {
             $fields[] = 'week_id = ?'; $params[] = $wk['week_id'];
             $fields[] = 'year = ?';    $params[] = $wk['year'];
+            $movedToYear = (int)$wk['year'];
         }
     }
 
@@ -592,6 +604,20 @@ function bookings_update(string $idStr) {
     $params[] = $id;
     $db->prepare("UPDATE fargny_bookings SET " . implode(', ', $fields) . " WHERE id = ?")
        ->execute($params);
+
+    // The booking number carries the year, so a stay moved across new year
+    // cannot keep it: 26-31 is not a 2027 booking, and that year may already
+    // have a 31. Release the old number before claiming one in the new year,
+    // or the unique key rejects the move. The member is told in the same
+    // email as the date change.
+    if ($movedToYear !== null && $movedToYear !== (int)$booking['year']) {
+        $oldNumber = format_booking_number($booking['year'], $booking['booking_seq'] ?? null);
+        $db->prepare("UPDATE fargny_bookings SET booking_seq = NULL WHERE id = ?")->execute([$id]);
+        $newNumber = format_booking_number($movedToYear, assign_booking_number($id, $movedToYear));
+        if ($oldNumber !== $newNumber) {
+            $changes[] = ['label' => 'Booking number', 'from' => $oldNumber ?: '—', 'to' => $newNumber ?: '—'];
+        }
+    }
 
     // Tell the member what an admin changed, and why. Never mail someone
     // about their own edit, and never for a no-op.
@@ -668,6 +694,7 @@ function bookings_leave(string $idStr) {
 
 function bookings_calendar() {
     $user = require_auth();
+    ensure_booking_numbers();
     $year = (int)($_GET['year'] ?? date('Y'));
     $db = get_db();
 
@@ -753,6 +780,7 @@ function bookings_calendar() {
 
 function bookings_public_calendar() {
     // No auth required
+    ensure_booking_numbers();
     $year = (int)($_GET['year'] ?? date('Y'));
     $db = get_db();
 

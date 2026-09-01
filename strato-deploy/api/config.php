@@ -330,6 +330,103 @@ function ensure_profile_columns() {
     }
 }
 
+// ---- Booking numbers ---------------------------------------------------
+// Every booking carries the number the family already used on the old
+// calendar: the two-digit year, then its position in that year's bookings,
+// written after the member's name — "Jaap de Vries (26-31)".
+//
+// The number is stored, not derived, so it never moves. Deriving it from
+// row order would renumber every later booking the moment an earlier one
+// is cancelled, and by then the number is out in someone's inbox.
+function ensure_booking_number_column() {
+    static $done = false;
+    if ($done) return;
+    $done = true;
+    $db = get_db();
+    try {
+        $has = $db->query("SHOW COLUMNS FROM fargny_bookings LIKE 'booking_seq'")->fetch();
+        if (!$has) {
+            $db->exec("ALTER TABLE fargny_bookings ADD COLUMN `booking_seq` SMALLINT UNSIGNED DEFAULT NULL");
+        }
+    } catch (Exception $e) { return; }
+    // One number per position per year, so a race cannot hand out a duplicate.
+    try {
+        $idx = $db->query("SHOW INDEX FROM fargny_bookings WHERE Key_name = 'uq_booking_seq'")->fetch();
+        if (!$idx) {
+            $db->exec("ALTER TABLE fargny_bookings ADD UNIQUE KEY `uq_booking_seq` (`year`, `booking_seq`)");
+        }
+    } catch (Exception $e) { /* an existing clash would block it; numbering still works */ }
+}
+
+// Column plus the one-off numbering of anything older. Read paths call
+// this; assign_booking_number() deliberately does NOT, because it clears a
+// row's number before claiming a new one and a backfill running in between
+// would number that row first and burn a number.
+function ensure_booking_numbers() {
+    static $done = false;
+    if ($done) return;
+    $done = true;
+    ensure_booking_number_column();
+    backfill_booking_numbers();
+}
+
+// Bookings made before numbering existed are numbered in the order they
+// were made, which is what the old list did. Runs until nothing is left
+// unnumbered, then costs one empty lookup.
+function backfill_booking_numbers() {
+    $db = get_db();
+    try {
+        $rows = $db->query("
+            SELECT id, year FROM fargny_bookings
+            WHERE booking_seq IS NULL
+            ORDER BY year, booked_at, id
+        ")->fetchAll();
+    } catch (Exception $e) { return; }
+    if (!$rows) return;
+
+    $next = [];
+    foreach ($rows as $r) {
+        $year = (int)$r['year'];
+        if (!isset($next[$year])) {
+            $stmt = $db->prepare("SELECT COALESCE(MAX(booking_seq), 0) AS m FROM fargny_bookings WHERE year = ?");
+            $stmt->execute([$year]);
+            $row = $stmt->fetch();
+            $next[$year] = (int)($row['m'] ?? 0) + 1;
+        }
+        try {
+            $db->prepare("UPDATE fargny_bookings SET booking_seq = ? WHERE id = ? AND booking_seq IS NULL")
+               ->execute([$next[$year], (int)$r['id']]);
+            $next[$year]++;
+        } catch (Exception $e) { $next[$year]++; }
+    }
+}
+
+// Claim the next number for a year. Retries on the unique key: two members
+// booking in the same instant both compute the same next value, and one of
+// them loses the insert rather than sharing a number.
+function assign_booking_number(int $bookingId, int $year): ?int {
+    ensure_booking_number_column();   // column only — never the backfill
+    $db = get_db();
+    for ($try = 0; $try < 5; $try++) {
+        try {
+            $stmt = $db->prepare("SELECT COALESCE(MAX(booking_seq), 0) + 1 AS n FROM fargny_bookings WHERE year = ?");
+            $stmt->execute([$year]);
+            $row = $stmt->fetch();
+            $n = (int)($row['n'] ?? 1);
+            $db->prepare("UPDATE fargny_bookings SET booking_seq = ? WHERE id = ?")->execute([$n, $bookingId]);
+            return $n;
+        } catch (Exception $e) { usleep(20000); }
+    }
+    return null;
+}
+
+// "26-31". Null while a booking has no number, so callers can tell the
+// difference between "not numbered" and "number zero".
+function format_booking_number($year, $seq): ?string {
+    if ($seq === null || $seq === '' || !$year) return null;
+    return sprintf('%02d-%d', ((int)$year) % 100, (int)$seq);
+}
+
 // The skill slugs a profile may claim. Anything else is rejected.
 function profile_skill_slugs(): array {
     return ['garden', 'maintenance', 'cooking', 'pruning', 'cleaning'];

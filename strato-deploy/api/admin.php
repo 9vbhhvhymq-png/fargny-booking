@@ -78,6 +78,7 @@ function admin_book() {
     ");
     $stmt->execute([$weekId, $year, $targetUserId, $target['branch_id'], $phase, $admin['id']]);
     $bookingId = (int)$db->lastInsertId();
+    $seq = assign_booking_number($bookingId, $year);
 
     // Create payment record
     $db->prepare("INSERT INTO fargny_payments (booking_id) VALUES (?)")->execute([$bookingId]);
@@ -90,12 +91,13 @@ function admin_book() {
         foreach ($weeks as $w) { if ($w['id'] === $weekId) { $week = $w; break; } }
         send_booking_confirmation($target, [
             'id' => $bookingId, 'week_id' => $weekId, 'phase' => $phase,
+            'booking_number' => format_booking_number($year, $seq),
             'check_in_date' => $week['start'] ?? '', 'check_out_date' => $week['end'] ?? '',
             'admin_booked' => true,
         ]);
     } catch (Exception $e) {}
 
-    json_success(['booking_id' => $bookingId], 201);
+    json_success(['booking_id' => $bookingId, 'booking_number' => format_booking_number($year, $seq)], 201);
 }
 
 function admin_parse_email() {

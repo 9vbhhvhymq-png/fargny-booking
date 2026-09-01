@@ -40,7 +40,8 @@ Strato shared hosting.
   `updated_at` column.
 - `bookings` — week_id (`2026-W42`), year, user_id, branch_id, phase
   (clan|priority|regular), check_in_date/check_out_date (both nullable),
-  open_to_share, remarks, linked_user_ids (JSON), cancellation_status.
+  open_to_share, remarks, linked_user_ids (JSON), cancellation_status,
+  `booking_seq` (added at runtime; the family's number, shown as `YY-N`).
 - `payments` — one per booking; `guest_data` = 7 nights of `{child04,
   child59, adult}`. Also `shareholders`, `board_events`/`board_signups`.
 - `settings` — key/value; holds the registration gate's `gate_question_en`
@@ -61,7 +62,12 @@ Strato shared hosting.
    by `require_shareholder()`, not just hidden in the UI.
 7. **No profile data in `bookings/public-calendar`**; hidden fields dropped in
    PHP.
-8. **Registration and the shareholder roster sit behind the family question**
+8. **A booking number is stored, never derived.** `booking_seq` is the
+   booking's place in its year, claimed once and never reused or shifted —
+   it is quoted in confirmation emails, so renumbering would invalidate
+   what people were told. Only a cross-year move changes it (the year is
+   half the number), and the member is emailed when that happens.
+9. **Registration and the shareholder roster sit behind the family question**
    — `require_gate_pass()` in `auth_register()` and `branches_shareholders()`.
    It **fails open** while `gate_answer` is empty, so an unset answer means no
    gate at all, not a locked-out family. The answer lives in the DB, set from

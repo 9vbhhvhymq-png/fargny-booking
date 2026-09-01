@@ -225,6 +225,11 @@ function bookingNightEntries(bookings, weekFor){
 // with an old-calendar entry is a different stay, and hiding it would erase
 // a real reservation from the calendar. The entry must also carry the
 // booker's name.
+// The family's booking number, written after the name: "Jaap (26-31)".
+// Empty for anything not numbered — old rows, and old-calendar entries.
+function bookingNo(b){ return (b && b.booking_number) ? ' ('+b.booking_number+')' : ''; }
+function withNo(name, b){ return (name||'') + bookingNo(b); }
+
 function nameMatchesBooking(title, booking){
   const t = String(title||'').toLowerCase();
   const who = String((booking && booking.user_name) || '').trim().toLowerCase();
@@ -1081,7 +1086,7 @@ function BookingManager({bookings=[], weeks=[], onEditBooking, onDeleteBooking, 
         return <div key={b.id} style={{padding:'10px 14px',background:'#F8F5F2',borderRadius:10,borderLeft:'3px solid '+(b.open_to_share?COLORS.openToShare:(br?br.color:'#ccc'))}}>
           <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
             <div style={{flex:1,minWidth:160}}>
-              <div style={{fontSize:13,fontWeight:600,color:COLORS.text}}>{b.user_name||'—'}{b.open_to_share?' \u00B7 \u{1F91D}':''}</div>
+              <div style={{fontSize:13,fontWeight:600,color:COLORS.text}}>{withNo(b.user_name||'—',b)}{b.open_to_share?' \u00B7 \u{1F91D}':''}</div>
               <div style={{fontSize:11,color:COLORS.muted}}>{formatDate(inD,lang)} &rarr; {formatDate(outD,lang)} &middot; {getPhaseName(b.phase,t)}{b.cancellation_status==='pending'?' \u00B7 \u23F3':''}</div>
               {b.remarks && <div style={{fontSize:11,color:COLORS.muted,fontStyle:'italic',marginTop:2}}>{'\u{1F4AC}'} {b.remarks}</div>}
             </div>
@@ -1286,7 +1291,7 @@ function AdminPanel({registeredUsers=[], weeks, year, bookings=[], onBooked, onA
           {pending.length===0 ? <div style={{padding:24,textAlign:'center',color:COLORS.muted,fontSize:14}}>{t.noPendingCancellations}</div>
           : pending.map(b=>{const w=weeks.find(wk=>wk.id===b.week_id);const br=FAMILY_BRANCHES.find(x=>x.id===b.branch_id);
             return <div key={b.id} style={{padding:'14px 16px',background:'#FEF2F2',border:'1px solid #B8504230',borderRadius:10,display:'flex',alignItems:'center',gap:12}}>
-              <div style={{flex:1}}><div style={{fontSize:14,fontWeight:600,color:COLORS.text}}>{b.user_name}</div><div style={{fontSize:12,color:COLORS.muted,marginTop:2}}>{br?br.name:''} &middot; {w?'W'+w.weekNum+': '+formatDate(w.start,lang)+' \u2013 '+formatDate(w.end,lang):b.week_id}</div></div>
+              <div style={{flex:1}}><div style={{fontSize:14,fontWeight:600,color:COLORS.text}}>{withNo(b.user_name,b)}</div><div style={{fontSize:12,color:COLORS.muted,marginTop:2}}>{br?br.name:''} &middot; {w?'W'+w.weekNum+': '+formatDate(w.start,lang)+' \u2013 '+formatDate(w.end,lang):b.week_id}</div></div>
               <button onClick={()=>onApproveCancellation(b.id)} style={{padding:'6px 14px',background:COLORS.success,border:'none',borderRadius:8,fontSize:12,color:'white',cursor:'pointer',fontWeight:600,fontFamily:"'DM Sans',sans-serif"}}>{t.approveCancellation}</button>
               <button onClick={()=>onRejectCancellation(b.id)} style={{padding:'6px 14px',background:'transparent',border:'1.5px solid #D4C5B5',borderRadius:8,fontSize:12,color:COLORS.muted,cursor:'pointer',fontWeight:500,fontFamily:"'DM Sans',sans-serif"}}>{t.rejectCancellation}</button>
             </div>;})}
@@ -1301,7 +1306,7 @@ function AdminPanel({registeredUsers=[], weeks, year, bookings=[], onBooked, onA
           {paymentBookings.length===0 ? <div style={{padding:24,textAlign:'center',color:COLORS.muted,fontSize:14}}>{t.noData}</div>
           : paymentBookings.map(b=>{const w=weeks.find(wk=>wk.id===b.week_id);const br=FAMILY_BRANCHES.find(x=>x.id===b.branch_id);
             return <div key={b.id} style={{padding:'12px 14px',background:'#F8F5F2',borderRadius:10,display:'flex',alignItems:'center',gap:10,borderLeft:'3px solid '+(br?br.color:'#ccc')}}>
-              <div style={{flex:1}}><div style={{fontSize:13,fontWeight:600,color:COLORS.text}}>{b.user_name}</div><div style={{fontSize:11,color:COLORS.muted}}>{w?'W'+w.weekNum+': '+formatDate(w.start,lang)+' \u2013 '+formatDate(w.end,lang):b.week_id}</div></div>
+              <div style={{flex:1}}><div style={{fontSize:13,fontWeight:600,color:COLORS.text}}>{withNo(b.user_name,b)}</div><div style={{fontSize:11,color:COLORS.muted}}>{w?'W'+w.weekNum+': '+formatDate(w.start,lang)+' \u2013 '+formatDate(w.end,lang):b.week_id}</div></div>
               {paymentBadge(b.payment_status||'not_paid',t)}
               <select value={b.payment_status||'not_paid'} onChange={e=>onUpdatePayment(b.id,e.target.value)} style={{padding:'4px 8px',border:'1px solid '+COLORS.border,borderRadius:6,fontSize:11,background:'white',fontFamily:"'DM Sans',sans-serif"}}>
                 <option value="not_paid">{t.notPaid}</option><option value="invoice_sent">{t.invoiceSent}</option><option value="paid">{t.paid}</option>
@@ -1421,7 +1426,7 @@ function WeekRow({week, myBooking, allBookings=[], gcalEvents=[], boardEvents=[]
     const bs=b.check_in_date||week.start, be=b.check_out_date||addDayISO(week.end,1);
     if(!(bs < weekDep && week.start < be)) return;
     if(b.is_hidden || !b.user_name) occupants.push({name:t.booked,hidden:true,shared:false});
-    else occupants.push({name:b.user_name,hidden:false,shared:!!b.open_to_share,userId:b.user_id,
+    else occupants.push({name:b.user_name,number:b.booking_number,hidden:false,shared:!!b.open_to_share,userId:b.user_id,
                          from:b.check_in_date,to:b.check_out_date,mine:b.user_id===user.id});
   });
   legacyGcalOnly(gcalEvents, allBookings, ()=>week).forEach(ev=>{
@@ -1446,10 +1451,11 @@ function WeekRow({week, myBooking, allBookings=[], gcalEvents=[], boardEvents=[]
             ? <span key={i} style={{display:'inline-flex',alignItems:'center',gap:4}}>
                 <MemberLink user={{user_id:o.userId,display_name:o.name,branch_id:0}} onOpen={onOpenProfile} size={18} color={COLORS.text}
                   style={{fontWeight:600,fontSize:11}}/>
+                {o.number?<span style={{color:COLORS.muted,fontWeight:600}}>{'('+o.number+')'}</span>:null}
                 {o.shared?<span style={{color:'#8A6D00'}}>{'\u{1F91D}'}</span>:null}
               </span>
             : <span key={i} style={{color:o.hidden?'#B0A090':o.gcal?COLORS.gcal:COLORS.text,fontWeight:o.hidden?400:600}}>
-                {o.hidden?o.name:(t.bookedBy+': '+o.name)}{o.shared?' \u00B7 \u{1F91D}':''}{o.gcal?' \u00B7 '+t.viaOldCalendar:''}
+                {o.hidden?o.name:(t.bookedBy+': '+o.name+(o.number?' ('+o.number+')':''))}{o.shared?' \u00B7 \u{1F91D}':''}{o.gcal?' \u00B7 '+t.viaOldCalendar:''}
               </span>)}
         </div>}
         {!hasMyBooking && reason && !specialEvent && occupants.length===0 && <div style={{fontSize:11,color:weekBookedByOther?COLORS.danger:'#B0A090',marginTop:2}}>{reason}</div>}
@@ -1606,7 +1612,7 @@ function BookingView({user, bookings=[], myBookings=[], weeks, year, setYear, ph
                         <div style={{fontSize:13,fontWeight:500,color:COLORS.text,textDecoration:isPending?'line-through':'none'}}>{bYear!==year?bYear+' \u00B7 ':''}{formatDate(b.check_in_date||w.start,lang)} &mdash; {formatDate(b.check_out_date||w.end,lang)}</div>
                       </div>
                       {isPending ? <div style={{fontSize:11,color:COLORS.warning,marginTop:2,fontWeight:600}}>{'\u23F3'} {t.pendingCancellation}</div>
-                      : <div style={{fontSize:11,color:COLORS.muted,marginTop:2}}>W{w.weekNum} &middot; {pm?pm.name:b.phase}{b.open_to_share?' \u00B7 \u{1F91D}':''}{b.admin_booked?' \u00B7 '+t.adminBooking:''}</div>}
+                      : <div style={{fontSize:11,color:COLORS.muted,marginTop:2}}>W{w.weekNum} &middot; {pm?pm.name:b.phase}{b.booking_number?' \u00B7 '+b.booking_number:''}{b.open_to_share?' \u00B7 \u{1F91D}':''}{b.admin_booked?' \u00B7 '+t.adminBooking:''}</div>}
                     </div>;
                   })}
                   {myEvents.map(ev=>(
@@ -1843,7 +1849,7 @@ function CalendarView({bookings=[], weeks, year, boardEvents=[], gcalEvents=[], 
               <h4 style={{fontSize:16,fontWeight:700,color:COLORS.text,margin:0,display:'flex',alignItems:'center',gap:8}}>
                 {popup.data.user_id && onOpenProfile
                   ? <MemberLink user={{user_id:popup.data.user_id,display_name:popup.data.user_name,branch_id:popup.data.branch_id}} onOpen={onOpenProfile} size={26} color={COLORS.text}/>
-                  : popup.data.user_name}
+                  : popup.data.user_name}{bookingNo(popup.data)}
               </h4>
             </div>
             <div style={{display:'flex',flexDirection:'column',gap:6,fontSize:13,color:COLORS.text}}>
@@ -2245,10 +2251,10 @@ function AdminTab({bookings=[], weeks=[], registeredUsers=[], user, year, onAppr
       const s = String(v).replace(/"/g,'""');
       return /[",\n;]/.test(s) ? '"'+s+'"' : s;
     };
-    const rows = [['id','year','week_id','week_num','week_start','week_end','phase','user_id','user_name','user_email','branch','check_in','check_out','open_to_share','remarks','cancellation_status','payment_status','include_cleaning','admin_booked','booked_at']];
+    const rows = [['id','booking_number','year','week_id','week_num','week_start','week_end','phase','user_id','user_name','user_email','branch','check_in','check_out','open_to_share','remarks','cancellation_status','payment_status','include_cleaning','admin_booked','booked_at']];
     bookings.forEach(b=>{
       const w = weeks.find(wk=>wk.id===b.week_id);
-      rows.push([b.id,b.year,b.week_id,w?w.weekNum:'',w?w.start:'',w?w.end:'',b.phase,b.user_id,b.user_name,b.user_email,b.branch_name,b.check_in_date||'',b.check_out_date||'',b.open_to_share?1:0,b.remarks||'',b.cancellation_status,b.payment_status,b.include_cleaning?1:0,b.admin_booked?1:0,b.booked_at]);
+      rows.push([b.id,b.booking_number||'',b.year,b.week_id,w?w.weekNum:'',w?w.start:'',w?w.end:'',b.phase,b.user_id,b.user_name,b.user_email,b.branch_name,b.check_in_date||'',b.check_out_date||'',b.open_to_share?1:0,b.remarks||'',b.cancellation_status,b.payment_status,b.include_cleaning?1:0,b.admin_booked?1:0,b.booked_at]);
     });
     const csv = rows.map(r=>r.map(esc).join(',')).join('\n');
     const blob = new Blob(['\ufeff'+csv], {type:'text/csv;charset=utf-8'});
@@ -2279,7 +2285,7 @@ function AdminTab({bookings=[], weeks=[], registeredUsers=[], user, year, onAppr
               {pending.map(b=>{const w=weeks.find(wk=>wk.id===b.week_id);const br=FAMILY_BRANCHES.find(x=>x.id===b.branch_id);
                 return <div key={b.id} style={{padding:'14px 16px',background:'#FEF2F2',border:'1px solid #B8504230',borderRadius:10,display:'flex',alignItems:'center',gap:12,flexWrap:'wrap'}}>
                   <div style={{flex:1,minWidth:180}}>
-                    <div style={{fontSize:14,fontWeight:600,color:COLORS.text}}>{b.user_name}</div>
+                    <div style={{fontSize:14,fontWeight:600,color:COLORS.text}}>{withNo(b.user_name,b)}</div>
                     <div style={{fontSize:12,color:COLORS.muted,marginTop:2}}>{br?br.name:''} &middot; {w?'W'+w.weekNum+': '+formatDate(w.start,lang)+' \u2013 '+formatDate(w.end,lang):b.week_id}</div>
                   </div>
                   <button onClick={()=>onApproveCancellation(b.id)} style={{padding:'6px 14px',background:COLORS.success,border:'none',borderRadius:8,fontSize:12,color:'white',cursor:'pointer',fontWeight:600,fontFamily:"'DM Sans',sans-serif"}}>{t.approveCancellation}</button>
