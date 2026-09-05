@@ -53,11 +53,16 @@ Strato shared hosting.
 1. **No two stays share a night.** Ranges are half-open `[check_in,
    check_out)`; touching on a changeover day is intended.
 2. **A week runs Friday → Friday**, 7 nights (`WEEK_START_DOW = 5`, both sides).
-3. **A regular stay is one of three shapes** from the week's Friday: week
-   `+0/7n`, midweek `+3/4n`, weekend `+0/3n`. NULL dates = the whole week.
+3. **Clan and priority stays are one of three shapes** from the week's
+   Friday: week `+0/7n`, midweek `+3/4n`, weekend `+0/3n`. A **regular** stay
+   is free-form — any arrival, any departure, no maximum length. Dates sent
+   empty mean the whole week.
 4. **Regular bookings open exactly 3 months before arrival**, rolling, all year.
-5. **Clan = one week per branch per year; priority = one per user**, blind
-   until reveal.
+   Clan and priority have their own windows and ignore this.
+5. **Clan = one booking per branch per year; priority = one per user** —
+   one booking whatever its length, so a branch taking a weekend has used
+   its clan booking. Both blind until reveal. A partial clan stay leaves the
+   rest of that week bookable by anyone.
 6. **Family members never create or change anything** — enforced server-side
    by `require_shareholder()`, not just hidden in the UI.
 7. **No profile data in `bookings/public-calendar`**; hidden fields dropped in

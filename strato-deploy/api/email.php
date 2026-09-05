@@ -62,6 +62,23 @@ function send_booking_confirmation(array $user, array $booking) {
 
     // The family's booking number: the year, then this booking's place in
     // that year. Quoted first because it is what people refer to.
+    // "Clan booking - Weekend", "Regular booking - 5 nights". Clan and
+    // priority are always one of the three shapes; regular is free-form.
+    $nights = 0;
+    if ($checkIn && $checkOut && $checkOut > $checkIn) {
+        $nights = (int)((strtotime($checkOut) - strtotime($checkIn)) / 86400);
+    }
+    $shapeName = '';
+    if ($nights === 7)      $shapeName = 'Week';
+    elseif ($nights === 4)  $shapeName = 'Midweek';
+    elseif ($nights === 3)  $shapeName = 'Weekend';
+    $typeLabel = $phase . ' booking';
+    if ($phase === 'Clan' || $phase === 'Priority') {
+        if ($shapeName !== '') $typeLabel .= ' - ' . $shapeName;
+    } elseif ($nights > 0) {
+        $typeLabel .= ' - ' . $nights . ' night' . ($nights === 1 ? '' : 's');
+    }
+
     $number = $booking['booking_number'] ?? null;
     $nameWithNumber = ($user['display_name'] ?? $user['email'])
                       . ($number ? ' (' . $number . ')' : '');
@@ -75,7 +92,7 @@ function send_booking_confirmation(array $user, array $booking) {
     <table style="width:100%;border-collapse:collapse;margin:16px 0;">
     ' . $numberRow . '
     <tr><td style="padding:8px 12px;color:#8B7D6B;font-size:13px;">Week</td><td style="padding:8px 12px;color:#2C1810;font-size:13px;font-weight:600;">' . htmlspecialchars($weekId) . '</td></tr>
-    <tr><td style="padding:8px 12px;color:#8B7D6B;font-size:13px;">Phase</td><td style="padding:8px 12px;color:#2C1810;font-size:13px;font-weight:600;">' . htmlspecialchars($phase . $adminBooked) . '</td></tr>
+    <tr><td style="padding:8px 12px;color:#8B7D6B;font-size:13px;">Type</td><td style="padding:8px 12px;color:#2C1810;font-size:13px;font-weight:600;">' . htmlspecialchars($typeLabel . $adminBooked) . '</td></tr>
     <tr><td style="padding:8px 12px;color:#8B7D6B;font-size:13px;">Check-in</td><td style="padding:8px 12px;color:#2C1810;font-size:13px;">' . htmlspecialchars($checkIn) . '</td></tr>
     <tr><td style="padding:8px 12px;color:#8B7D6B;font-size:13px;">Check-out</td><td style="padding:8px 12px;color:#2C1810;font-size:13px;">' . htmlspecialchars($checkOut) . '</td></tr>
     ' . $amountRow . '

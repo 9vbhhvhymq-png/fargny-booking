@@ -286,146 +286,118 @@ function bookings_create() {
         if ($stmt->fetch()) json_error('You already have a priority booking this year');
     }
 
-    // Clan/Priority book a whole week. The house can only be used once per
-    // week, so a week already taken by ANY booking, a Google Calendar event,
-    // or a special event is not bookable — even during the blind phases.
+    // ---- Which nights are being reserved -------------------------------
+    // Clan and priority take one of the three shapes; regular is free-form,
+    // bounded only by the booking horizon and by not colliding with anything.
+    $weeks = generate_weeks($year);
+    $week = null;
+    foreach ($weeks as $w) { if ($w['id'] === $weekId) { $week = $w; break; } }
+
     if ($phase === 'clan' || $phase === 'priority') {
-        $weeks = generate_weeks($year);
-        $week = null;
-        foreach ($weeks as $w) { if ($w['id'] === $weekId) { $week = $w; break; } }
-        if ($week) {
-            // Whole week = 7 nights, departing the day after week end.
-            $rs = $week['start']; $re = date_plus_days($week['end'], 1);
-
-            $s = $db->prepare("
-                SELECT week_id, year, check_in_date, check_out_date
-                FROM fargny_bookings
-                WHERE cancellation_status NOT IN ('approved')
-            ");
-            $s->execute();
-            $wby = [];
-            foreach ($s->fetchAll() as $ex) {
-                $r = booking_night_range($ex, $wby);
-                if ($r && ranges_overlap($r[0], $r[1], $rs, $re)) json_error('This week is already booked');
-            }
-
-            require_once __DIR__ . '/google-calendar.php';
-            $gc = @gcal_get_events();
-            if (is_array($gc)) {
-                foreach ($gc as $ev) {
-                    $r = gcal_night_range($ev);
-                    if ($r && ranges_overlap($r[0], $r[1], $rs, $re)) json_error('These dates are already booked via the existing calendar');
-                }
-            }
-
-            $evStmt = $db->prepare("SELECT id FROM fargny_board_events WHERE start_date < ? AND DATE_ADD(end_date, INTERVAL 1 DAY) > ? LIMIT 1");
-            $evStmt->execute([$re, $rs]);
-            if ($evStmt->fetch()) json_error('These dates are reserved for a special event — join the event instead');
+        if (!$week) json_error('Unknown week');
+        // A booking sent without dates means the whole week, which is one of
+        // the three shapes anyway.
+        if (!$checkIn || !$checkOut) {
+            $checkIn  = $week['start'];
+            $checkOut = date_plus_days($week['end'], 1);
         }
-    }
-
-    // Regular: arrival must fall inside the booking window, max 7 nights.
-    if ($phase === 'regular') {
-        $weeks = generate_weeks($year);
-        $week = null;
-        foreach ($weeks as $w) {
-            if ($w['id'] === $weekId) { $week = $w; break; }
+        $shapes = stay_shapes($week);
+        $match = null;
+        foreach ($shapes as $kind => $r) {
+            if ($r['start'] === $checkIn && $r['end'] === $checkOut) { $match = $kind; break; }
         }
+        if (!$match) {
+            $options = [];
+            foreach ($shapes as $kind => $r) $options[] = "$kind {$r['start']} to {$r['end']}";
+            json_error('A clan or priority stay must be a week, a midweek or a weekend. Available for this week: '
+                       . implode('; ', $options));
+        }
+    } else {
+        // ---- Regular ---------------------------------------------------
+        // Any arrival and any departure. The three shapes do not apply, and
+        // there is no maximum length: the horizon is the only ceiling.
+        if ($checkIn && $checkOut) {
+            if ($checkOut <= $checkIn) json_error('Departure must be after arrival');
+        } elseif ($week) {
+            // No dates given: take the whole week, as before.
+            $checkIn  = $week['start'];
+            $checkOut = date_plus_days($week['end'], 1);
+        } else {
+            json_error('Arrival and departure dates are required');
+        }
+
+        // Bookings open a fixed number of months before ARRIVAL.
         $horizon = new DateTime();
         $horizon->modify('+' . REGULAR_MONTHS_AHEAD . ' months');
-
-        // Check the date actually being reserved: with custom dates that is
-        // the chosen arrival, otherwise the start of the week.
-        $arrival = $checkIn ?: ($week['start'] ?? null);
-        if (!$isAdmin && $arrival && new DateTime($arrival) > $horizon) {
+        if (!$isAdmin && new DateTime($checkIn) > $horizon) {
             json_error('These dates are not yet open for regular booking — bookings open '
                        . REGULAR_MONTHS_AHEAD . ' months ahead');
         }
-        // A stay must be one of exactly three shapes, all measured from the
-        // Friday the week starts on: a week (Fri-Fri, 7 nights), a midweek
-        // (Mon-Fri, 4 nights) or a weekend (Fri-Mon, 3 nights).
-        if ($checkIn && $checkOut && $week) {
-            $shapes = stay_shapes($week);
-            $match = null;
-            foreach ($shapes as $kind => $r) {
-                if ($r['start'] === $checkIn && $r['end'] === $checkOut) { $match = $kind; break; }
-            }
-            if (!$match) {
-                $options = [];
-                foreach ($shapes as $kind => $r) $options[] = "$kind {$r['start']} to {$r['end']}";
-                json_error('A stay must be a week, a midweek or a weekend. Available for this week: '
-                           . implode('; ', $options));
-            }
+
+        // A free-form stay need not start in the week the client submitted,
+        // so file it under the week its arrival actually falls in. The year
+        // follows, because it is half of the booking number.
+        $wk = week_id_for_date($checkIn);
+        if ($wk) {
+            $weekId = $wk['week_id'];
+            $year   = (int)$wk['year'];
         }
+    }
 
-        // Nights we are about to reserve, as [start, departure). Without
-        // custom dates the booking takes the whole week and departs the day
-        // after week end.
-        $rangeStart = $checkIn ?: ($week['start'] ?? null);
-        $rangeEnd   = $checkOut ?: (isset($week['end']) ? date_plus_days($week['end'], 1) : null);
+    $rangeStart = $checkIn;
+    $rangeEnd   = $checkOut;
 
-        // Reject if the chosen nights overlap another Fargny booking.
-        // Bookings stored without explicit dates occupy their full week, so
-        // resolve effective dates from the week id in PHP — a NULL-date
-        // fallback inside the SQL would match every booking.
-        if ($rangeStart && $rangeEnd) {
-            $stmt = $db->prepare("
-                SELECT week_id, year, check_in_date, check_out_date
-                FROM fargny_bookings
-                WHERE cancellation_status NOT IN ('approved')
-            ");
-            $stmt->execute();
-            $weeksByYear = [];
-            foreach ($stmt->fetchAll() as $ex) {
-                $r = booking_night_range($ex, $weeksByYear);
-                if (!$r) continue;
-                if (ranges_overlap($r[0], $r[1], $rangeStart, $rangeEnd)) {
-                    json_error('These dates overlap with an existing booking');
-                }
-            }
-        } else {
-            // Fallback: same-week-id check
-            $stmt = $db->prepare("SELECT id FROM fargny_bookings WHERE week_id = ? AND cancellation_status NOT IN ('approved') LIMIT 1");
-            $stmt->execute([$weekId]);
-            if ($stmt->fetch()) json_error('This week is already booked');
+    // ---- Collisions ----------------------------------------------------
+    // The same for every phase, and never bypassed — not even by an admin.
+    // The house cannot hold two stays on the same night.
+
+    // Other Fargny bookings. Rows stored without explicit dates occupy their
+    // whole week, so effective dates are resolved in PHP: a NULL-date
+    // fallback inside the SQL would match every booking.
+    $stmt = $db->prepare("
+        SELECT week_id, year, check_in_date, check_out_date
+        FROM fargny_bookings
+        WHERE cancellation_status NOT IN ('approved')
+    ");
+    $stmt->execute();
+    $weeksByYear = [];
+    foreach ($stmt->fetchAll() as $ex) {
+        $r = booking_night_range($ex, $weeksByYear);
+        if (!$r) continue;
+        if (ranges_overlap($r[0], $r[1], $rangeStart, $rangeEnd)) {
+            json_error('These dates overlap with an existing booking');
         }
+    }
 
-        // Reject only if the chosen nights overlap a Google Calendar event —
-        // arriving on the day a previous guest departs is fine.
-        if ($rangeStart && $rangeEnd) {
-            require_once __DIR__ . '/google-calendar.php';
-            $gcalEvents = @gcal_get_events();
-            if (is_array($gcalEvents)) {
-                foreach ($gcalEvents as $ev) {
-                    $r = gcal_night_range($ev);
-                    if (!$r) continue;
-                    if (ranges_overlap($r[0], $r[1], $rangeStart, $rangeEnd)) {
-                        json_error('These dates are already booked via the existing calendar');
-                    }
-                }
-            }
-        }
-
-        // Reject if the chosen nights overlap a special event — those dates
-        // are reserved and members should join the event instead of booking.
-        // An event occupies its days, so it "departs" the day after end_date.
-        if ($rangeStart && $rangeEnd) {
-            $evStmt = $db->prepare("
-                SELECT id FROM fargny_board_events
-                WHERE start_date < ? AND DATE_ADD(end_date, INTERVAL 1 DAY) > ?
-                LIMIT 1
-            ");
-            $evStmt->execute([$rangeEnd, $rangeStart]);
-            if ($evStmt->fetch()) {
-                json_error('These dates are reserved for a special event — join the event instead');
+    // Stays still living in the old Google Calendar.
+    require_once __DIR__ . '/google-calendar.php';
+    $gcalEvents = @gcal_get_events();
+    if (is_array($gcalEvents)) {
+        foreach ($gcalEvents as $ev) {
+            $r = gcal_night_range($ev);
+            if (!$r) continue;
+            if (ranges_overlap($r[0], $r[1], $rangeStart, $rangeEnd)) {
+                json_error('These dates are already booked via the existing calendar');
             }
         }
     }
 
-    // No double booking: same week, same user
-    $stmt = $db->prepare("SELECT id FROM fargny_bookings WHERE week_id = ? AND user_id = ? AND cancellation_status NOT IN ('approved') LIMIT 1");
-    $stmt->execute([$weekId, $user['id']]);
-    if ($stmt->fetch()) json_error('You already have a booking for this week');
+    // Special events reserve their dates; members join the event instead.
+    // An event occupies its days, so it "departs" the day after end_date.
+    $evStmt = $db->prepare("
+        SELECT id FROM fargny_board_events
+        WHERE start_date < ? AND DATE_ADD(end_date, INTERVAL 1 DAY) > ?
+        LIMIT 1
+    ");
+    $evStmt->execute([$rangeEnd, $rangeStart]);
+    if ($evStmt->fetch()) {
+        json_error('These dates are reserved for a special event — join the event instead');
+    }
+
+    // Deliberately no "one booking per user per week" rule: with free-form
+    // regular dates, two separate stays in the same week are legitimate.
+    // Overlaps — including an accidental double submit — are already caught
+    // by the collision check above.
 
     // ---- Insert booking ----
     $stmt = $db->prepare("
