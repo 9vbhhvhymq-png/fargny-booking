@@ -42,3 +42,9 @@ ALTER TABLE `fargny_users`
 -- NULL means the member has not seen the walkthrough yet.
 ALTER TABLE `fargny_users`
   ADD COLUMN `onboarded_at` DATETIME DEFAULT NULL COMMENT 'when the walkthrough was finished or skipped';
+
+-- Notifications --------------------------------------------------------
+-- 0 = send the recurring "these weeks just opened" mail. Never affects
+-- anything about the member's own booking.
+ALTER TABLE `fargny_users`
+  ADD COLUMN `notify_opt_out` TINYINT(1) NOT NULL DEFAULT 0;

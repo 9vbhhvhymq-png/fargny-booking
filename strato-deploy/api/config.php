@@ -319,6 +319,9 @@ function ensure_profile_columns() {
         // When this member finished (or skipped) the walkthrough. NULL means
         // they have not seen it yet, so everyone gets it once.
         'onboarded_at'          => "DATETIME DEFAULT NULL",
+        // Opts out of the recurring "these weeks just opened" mail. Never
+        // silences anything about the member's own booking.
+        'notify_opt_out'        => "TINYINT(1) NOT NULL DEFAULT 0",
     ];
     foreach ($columns as $name => $ddl) {
         try {

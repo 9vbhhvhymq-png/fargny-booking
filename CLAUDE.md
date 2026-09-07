@@ -47,7 +47,8 @@ Strato shared hosting.
 - `priority_releases` — user_id + the nights of a priority booking that was
   given up; created by `ensure_priority_release_table()`.
 - `settings` — key/value; the registration gate, plus `notified_*` markers so
-  `notify.php` never sends an announcement twice. Holds `gate_question_en`
+  `notify.php` never sends an announcement twice, and `open_weeks_last_horizon`
+  (how far the rolling digest has already announced). Holds `gate_question_en`
   /`_nl` and `gate_answer`. Plus `gate_tokens` (1-hour passes) and
   `gate_attempts` (rate limiting). All created by `ensure_gate_tables()`.
 

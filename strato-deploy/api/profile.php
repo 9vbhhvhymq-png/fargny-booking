@@ -143,6 +143,8 @@ function profile_shape_full(array $u): array {
         'travels_with'          => profile_decode_ids($u['travels_with'] ?? null),
         'skills'                => profile_decode_skills($u['skills'] ?? null),
         'open_to_share_default' => !empty($u['open_to_share_default']),
+        // Recurring "new weeks are open" mail only; never a member's own booking.
+        'notify_opt_out'        => !empty($u['notify_opt_out']),
         'vis_photo_bio'         => !empty($u['vis_photo_bio']),
         'vis_phone'             => !empty($u['vis_phone']),
         'vis_town'              => !empty($u['vis_town']),
@@ -172,6 +174,7 @@ function profile_shape_visible(array $u): array {
         'travels_with'          => profile_decode_ids($u['travels_with'] ?? null),
         'skills'                => profile_decode_skills($u['skills'] ?? null),
         'open_to_share_default' => !empty($u['open_to_share_default']),
+        'notify_opt_out'        => !empty($u['notify_opt_out']),
         'stays_visible'         => !empty($u['vis_stays']),
         'is_self'               => false,
     ];
@@ -272,7 +275,7 @@ function profile_update_me() {
         }
         $set('travels_with', json_encode(array_values($clean)));
     }
-    foreach (['open_to_share_default', 'vis_photo_bio', 'vis_phone', 'vis_town', 'vis_stays'] as $flag) {
+    foreach (['open_to_share_default', 'vis_photo_bio', 'vis_phone', 'vis_town', 'vis_stays', 'notify_opt_out'] as $flag) {
         if (array_key_exists($flag, $body)) $set($flag, $body[$flag] ? 1 : 0);
     }
     // Stamped when the walkthrough is finished or skipped, so it is offered

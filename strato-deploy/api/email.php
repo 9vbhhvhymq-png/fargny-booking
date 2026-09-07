@@ -283,3 +283,48 @@ function send_clan_clash(array $user, array $booking, array $others, int $year) 
     send_email($email, "Clan booking clash for $year - please change your dates",
                email_template('Clan Booking Clash', $content));
 }
+
+// The weeks that have just come within the booking horizon. Recurring, so
+// it carries the one opt-out line; everything about a member's own booking
+// ignores that setting.
+function send_weeks_open(array $user, array $weeks) {
+    $email = $user['email'] ?? '';
+    if (!$email || !$weeks) return;
+
+    $rows = '';
+    foreach ($weeks as $w) {
+        $depart = date('Y-m-d', strtotime($w['end'] . ' +1 day'));
+        $rows .= '<tr>'
+              . '<td style="padding:8px 12px;color:#8B7D6B;font-size:13px;">W' . (int)$w['weekNum'] . '</td>'
+              . '<td style="padding:8px 12px;color:#2C1810;font-size:13px;font-weight:600;">'
+              . htmlspecialchars($w['start']) . ' &mdash; ' . htmlspecialchars($depart) . '</td></tr>';
+    }
+    $count = count($weeks);
+    $noun  = $count === 1 ? 'week is' : 'weeks are';
+
+    $content = '<p style="color:#2C1810;font-size:15px;">Dear ' . htmlspecialchars($user['display_name'] ?? '') . ',</p>
+    <p style="color:#2C1810;font-size:15px;">' . $count . ' new ' . $noun . ' now open for booking.</p>
+    <table style="width:100%;border-collapse:collapse;margin:16px 0;">' . $rows . '</table>
+    <p style="color:#2C1810;font-size:14px;">A regular booking can be any dates you like inside these weeks &mdash;
+    arrive and leave when it suits you, as long as nobody else has those nights.</p>
+    <p style="color:#8B7D6B;font-size:13px;">Bookings open ' . REGULAR_MONTHS_AHEAD . ' months before arrival, so a
+    little more becomes available every week.</p>
+    <p style="color:#8B7D6B;font-size:12px;">Would rather not get these? Turn them off under
+    &ldquo;Notifications&rdquo; in your profile. You will still hear about your own bookings.</p>';
+
+    send_email($email, "$count new $noun open at Fargny", email_template('New Weeks Open', $content));
+}
+
+// Three days before the clan window shuts, to branches that have not booked.
+function send_clan_closing(array $user, array $cfg, int $year) {
+    $email = $user['email'] ?? '';
+    if (!$email) return;
+    $content = '<p style="color:#2C1810;font-size:15px;">Dear ' . htmlspecialchars($user['display_name'] ?? '') . ',</p>
+    <p style="color:#2C1810;font-size:15px;">Clan booking for <strong>' . $year . '</strong> closes on
+    <strong>' . htmlspecialchars($cfg['clan_end']) . '</strong>, and your branch has not booked yet.</p>
+    <p style="color:#2C1810;font-size:14px;">Your branch may take one clan stay for the year: a week, a midweek or a
+    weekend. Once the window shuts it cannot be claimed.</p>
+    <p style="color:#8B7D6B;font-size:13px;">If your branch has decided not to take one this year, you can ignore this.</p>';
+    send_email($email, "Clan booking for $year closes on " . $cfg['clan_end'],
+               email_template('Clan Booking Closing', $content));
+}

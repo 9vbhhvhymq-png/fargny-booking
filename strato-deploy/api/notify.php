@@ -34,6 +34,12 @@ function notify_run() {
     require_once __DIR__ . '/email.php';
 
     $sent = [];
+
+    // Weeks that have just come within reach. Regular booking opens a fixed
+    // number of months before arrival, so new dates cross the line every
+    // day; without this nobody knows unless they happen to look.
+    $sent[] = notify_open_weeks($dry);
+
     $rows = $db->query("SELECT * FROM fargny_phase_config ORDER BY year")->fetchAll();
 
     foreach ($rows as $cfg) {
@@ -44,6 +50,19 @@ function notify_run() {
             $sent[] = notify_once("clan_open_$year", $dry, function () use ($cfg, $year) {
                 $n = 0;
                 foreach (notify_shareholders() as $m) { send_clan_open($m, $cfg, $year); $n++; }
+                return $n;
+            });
+        }
+
+        // 2b. The clan window is about to close. Only to the branches that
+        // have not booked — the ones who can still lose their turn.
+        if ($cfg['clan_end'] && $today <= $cfg['clan_end']
+            && $today >= date('Y-m-d', strtotime($cfg['clan_end'] . ' -3 days'))) {
+            $sent[] = notify_once("clan_closing_$year", $dry, function () use ($cfg, $year) {
+                $n = 0;
+                foreach (notify_branches_without_clan($year) as $m) {
+                    send_clan_closing($m, $cfg, $year); $n++;
+                }
                 return $n;
             });
         }
@@ -109,6 +128,87 @@ function notify_shareholders(): array {
         WHERE email <> '' AND (role IS NULL OR role <> 'family_member')
     ")->fetchAll();
     return $rows ?: [];
+}
+
+// Everyone, family members included: which weeks are open is worth knowing
+// even if you are not the one who books. Honours the opt-out, which covers
+// the recurring mail only — never anything about a member's own booking.
+function notify_all_members(): array {
+    ensure_profile_columns();
+    try {
+        $rows = get_db()->query("
+            SELECT id, display_name, email, branch_id
+            FROM fargny_users
+            WHERE email <> '' AND (notify_opt_out IS NULL OR notify_opt_out = 0)
+        ")->fetchAll();
+    } catch (Exception $e) {
+        // Before the column exists, nobody has opted out.
+        $rows = get_db()->query("SELECT id, display_name, email, branch_id
+                                 FROM fargny_users WHERE email <> ''")->fetchAll();
+    }
+    return $rows ?: [];
+}
+
+// One member per branch that has not made its clan booking yet, so the
+// reminder goes to the people who can still act on it.
+function notify_branches_without_clan(int $year): array {
+    ensure_role_columns();
+    $db = get_db();
+    $rows = $db->prepare("
+        SELECT u.id, u.display_name, u.email, u.branch_id
+        FROM fargny_users u
+        WHERE u.email <> ''
+          AND (u.role IS NULL OR u.role <> 'family_member')
+          AND NOT EXISTS (
+              SELECT 1 FROM fargny_bookings b
+              WHERE b.branch_id = u.branch_id AND b.year = ?
+                AND b.phase = 'clan' AND b.cancellation_status NOT IN ('approved')
+          )
+    ");
+    $rows->execute([$year]);
+    return $rows->fetchAll() ?: [];
+}
+
+// ---- The rolling horizon ---------------------------------------------
+// Which weeks became bookable since the last time we said so. The last
+// horizon reported is remembered, so nothing is announced twice and
+// nothing is skipped, whatever day the scheduler actually runs.
+function notify_open_weeks(bool $dry) {
+    $horizon = date('Y-m-d', strtotime('+' . REGULAR_MONTHS_AHEAD . ' months'));
+    $last    = setting_get('open_weeks_last_horizon', '');
+
+    // First ever run: start the clock, announce nothing. Otherwise the very
+    // first mail would list three months of weeks as though they were news.
+    if ($last === '') {
+        if (!$dry) setting_set('open_weeks_last_horizon', $horizon);
+        return ['announcement' => 'open_weeks', 'first_run' => true, 'emails' => 0];
+    }
+    if ($horizon <= $last) return null;
+
+    // At most one of these a week, however often the scheduler runs.
+    $weekKey = 'open_weeks_' . date('o-\WW');
+    if (setting_get('notified_' . $weekKey, '') !== '') return null;
+
+    $opened = [];
+    foreach ([(int)substr($last, 0, 4), (int)substr($horizon, 0, 4)] as $y) {
+        foreach (generate_weeks($y) as $w) {
+            if ($w['start'] > $last && $w['start'] <= $horizon) $opened[$w['id']] = $w;
+        }
+    }
+    ksort($opened);
+    if (!$opened) return null;
+
+    if ($dry) return ['announcement' => $weekKey, 'weeks' => count($opened), 'would_send' => true];
+
+    setting_set('notified_' . $weekKey, date('Y-m-d H:i:s'));
+    setting_set('open_weeks_last_horizon', $horizon);
+    $n = 0;
+    try {
+        foreach (notify_all_members() as $m) { send_weeks_open($m, array_values($opened)); $n++; }
+    } catch (Exception $e) {
+        return ['announcement' => $weekKey, 'error' => $e->getMessage()];
+    }
+    return ['announcement' => $weekKey, 'weeks' => count($opened), 'emails' => $n];
 }
 
 // For each clashing clan booking, the member who made it and who else
