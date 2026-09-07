@@ -208,6 +208,10 @@ function admin_approve_cancellation(string $idStr) {
     $booking = $stmt->fetch();
     if (!$booking) json_error('Booking not found', 404);
 
+    // Giving up a priority booking hands the priority back for other dates,
+    // but shuts these nights to that member as a regular booking.
+    record_priority_release($booking);
+
     // Actually delete the booking (and its payment record) so the week
     // becomes free again and the user disappears from all lists.
     $db->prepare("DELETE FROM fargny_payments WHERE booking_id = ?")->execute([$id]);
@@ -305,6 +309,11 @@ function admin_delete_booking(string $idStr) {
     $stmt->execute([$id]);
     $booking = $stmt->fetch();
     if (!$booking) json_error('Booking not found', 404);
+
+    // Same as an approved cancellation: a priority stay that is deleted
+    // frees the member's priority for other dates and closes these nights
+    // to them as a regular booking.
+    record_priority_release($booking);
 
     $db->prepare("DELETE FROM fargny_payments WHERE booking_id = ?")->execute([$id]);
     $db->prepare("DELETE FROM fargny_bookings WHERE id = ?")->execute([$id]);

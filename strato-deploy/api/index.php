@@ -74,6 +74,13 @@ switch ($resource) {
         handle_payments($action, $method);
         break;
 
+    case 'notify':
+        require_once __DIR__ . '/notify.php';
+        require_once __DIR__ . '/bookings.php';   // clan_clash_map()
+        if ($action === 'run') { notify_run(); }
+        else json_error('Unknown notify action', 404);
+        break;
+
     case 'stats':
         require_once __DIR__ . '/stats.php';
         handle_stats($method);

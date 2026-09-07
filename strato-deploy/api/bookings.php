@@ -108,6 +108,37 @@ function ranges_overlap(string $aStart, string $aEndExcl, string $bStart, string
     return $aStart < $bEndExcl && $bStart < $aEndExcl;
 }
 
+// Clan bookings that claim the same nights. The blind round lets two
+// branches pick one week without seeing each other, so after the reveal
+// the clashes have to be surfaced and settled. Returns booking id => the
+// ids it collides with.
+function clan_clash_map(int $year): array {
+    $db = get_db();
+    $stmt = $db->prepare("
+        SELECT id, week_id, year, check_in_date, check_out_date
+        FROM fargny_bookings
+        WHERE year = ? AND phase = 'clan' AND cancellation_status NOT IN ('approved')
+    ");
+    $stmt->execute([$year]);
+    $rows = $stmt->fetchAll();
+
+    $weeksByYear = [];
+    $ranges = [];
+    foreach ($rows as $r) {
+        $n = booking_night_range($r, $weeksByYear);
+        if ($n) $ranges[(int)$r['id']] = $n;
+    }
+
+    $map = [];
+    foreach ($ranges as $idA => $a) {
+        foreach ($ranges as $idB => $b) {
+            if ($idA === $idB) continue;
+            if (ranges_overlap($a[0], $a[1], $b[0], $b[1])) $map[$idA][] = $idB;
+        }
+    }
+    return $map;
+}
+
 function format_booking(array $b): array {
     return [
         'id'                  => (int)$b['id'],
@@ -167,8 +198,14 @@ function bookings_list() {
     $clanRevealed     = $cfg ? ($today >= $cfg['clan_reveal']) : true;
     $priorityRevealed = $cfg ? ($today >= $cfg['priority_reveal']) : true;
 
-    $anonymize = function (array $b) use ($user, $clanRevealed, $priorityRevealed): array {
+    // Clashes are part of the reveal: before it, saying two people picked
+    // the same week would leak the round. Nobody sees them early, not even
+    // the members involved.
+    $clashMap = $clanRevealed ? clan_clash_map($year) : [];
+
+    $anonymize = function (array $b) use ($user, $clanRevealed, $priorityRevealed, $clashMap): array {
         $fmt = format_booking($b);
+        $fmt['clashes_with'] = $clashMap[(int)$b['id']] ?? [];
         if ($user['is_admin'] || (int)$b['user_id'] === (int)$user['id']) return $fmt;
         $hidden = ($b['phase'] === 'clan' && !$clanRevealed)
                || ($b['phase'] === 'priority' && !$priorityRevealed);
@@ -202,9 +239,17 @@ function bookings_list() {
     $stmtMy->execute([$user['id']]);
     $myAll = $stmtMy->fetchAll();
 
+    // The member's own list is not anonymised, but it does carry the clash
+    // flag: this is where they are told to go and change their dates.
+    $withClash = function (array $b) use ($clashMap): array {
+        $fmt = format_booking($b);
+        $fmt['clashes_with'] = $clashMap[(int)$b['id']] ?? [];
+        return $fmt;
+    };
+
     json_success([
         'bookings'    => array_map($anonymize, $all),
-        'my_bookings' => array_map('format_booking', $myAll),
+        'my_bookings' => array_map($withClash, $myAll),
         'weeks'       => generate_weeks($year),
     ]);
 }
@@ -247,14 +292,18 @@ function bookings_create() {
             if ($today < $cfg['clan_start'] || $today > $cfg['clan_end']) {
                 json_error('Clan booking phase is not currently open');
             }
-        } elseif ($phase === 'priority') {
-            if ($today < $cfg['priority_start'] || $today > $cfg['priority_end']) {
-                json_error('Priority booking phase is not currently open');
-            }
         }
-        // Regular booking is open all year round; the rolling horizon below
-        // is the only restriction, so there is no phase window to check.
+        // Priority runs all year and is not held to the 3-month horizon:
+        // booking far ahead is the privilege it exists to give. It stays
+        // hidden until priority_reveal, and one per member per year.
+        // Regular is open all year too; its rolling horizon below is the
+        // only restriction, so neither has a phase window to check.
     }
+
+    // The clan round is blind: until the reveal date two branches may claim
+    // the same week without seeing each other, and the clash is settled
+    // afterwards. Nothing else may ever double-book.
+    $clanBlind = $cfg && $today < $cfg['clan_reveal'];
 
     // ---- Booking rules ----
     $branchId = (int)$user['branch_id'];
@@ -334,6 +383,19 @@ function bookings_create() {
                        . REGULAR_MONTHS_AHEAD . ' months ahead');
         }
 
+        // Dates given up with a priority booking do not come back to the
+        // same member as an ordinary one: the priority may be used again
+        // elsewhere, but not to take these nights twice over.
+        if (!$isAdmin) {
+            foreach (priority_releases_for((int)$user['id']) as $rel) {
+                if (ranges_overlap($rel['check_in_date'], $rel['check_out_date'], $checkIn, $checkOut)) {
+                    json_error('You gave these nights up when you released your priority booking, '
+                             . 'so they cannot be taken again as a regular booking. Your priority '
+                             . 'booking is still free to use on other dates.');
+                }
+            }
+        }
+
         // A free-form stay need not start in the week the client submitted,
         // so file it under the week its arrival actually falls in. The year
         // follows, because it is half of the booking number.
@@ -355,7 +417,7 @@ function bookings_create() {
     // whole week, so effective dates are resolved in PHP: a NULL-date
     // fallback inside the SQL would match every booking.
     $stmt = $db->prepare("
-        SELECT week_id, year, check_in_date, check_out_date
+        SELECT week_id, year, phase, check_in_date, check_out_date
         FROM fargny_bookings
         WHERE cancellation_status NOT IN ('approved')
     ");
@@ -364,9 +426,11 @@ function bookings_create() {
     foreach ($stmt->fetchAll() as $ex) {
         $r = booking_night_range($ex, $weeksByYear);
         if (!$r) continue;
-        if (ranges_overlap($r[0], $r[1], $rangeStart, $rangeEnd)) {
-            json_error('These dates overlap with an existing booking');
-        }
+        if (!ranges_overlap($r[0], $r[1], $rangeStart, $rangeEnd)) continue;
+        // Two clan claims on the same nights are allowed while the round is
+        // blind — that is the point of bidding without seeing the others.
+        if ($phase === 'clan' && ($ex['phase'] ?? '') === 'clan' && $clanBlind) continue;
+        json_error('These dates overlap with an existing booking');
     }
 
     // Stays still living in the old Google Calendar.
@@ -522,14 +586,38 @@ function bookings_update(string $idStr) {
         $params[] = json_encode($body['linked_user_ids'] ?: []);
     }
 
-    // Admins may also move a booking to different dates. The week it is
-    // filed under follows the new arrival date so it appears in the right
-    // row, and the new nights must not collide with another booking.
-    if ($user['is_admin'] && (array_key_exists('check_in_date', $body) || array_key_exists('check_out_date', $body))) {
+    // Dates can be moved by an admin or by the member who made the booking
+    // — the latter is how a clan clash gets resolved after the reveal. The
+    // week it is filed under follows the new arrival date so it appears in
+    // the right row, and the new nights must not collide with anything.
+    if (array_key_exists('check_in_date', $body) || array_key_exists('check_out_date', $body)) {
         $newIn  = $body['check_in_date']  ?? $booking['check_in_date'];
         $newOut = $body['check_out_date'] ?? $booking['check_out_date'];
         if (!$newIn || !$newOut) json_error('Both arrival and departure dates are required');
         if ($newOut <= $newIn) json_error('Departure must be after arrival');
+        if (!$user['is_admin'] && $newIn < date('Y-m-d')) {
+            json_error('That stay is in the past — bookings can only start from today');
+        }
+
+        // Clan and priority stay one of the three shapes when they move.
+        // An admin is the escape hatch and is not held to it.
+        $ph = $booking['phase'] ?? 'regular';
+        if (!$user['is_admin'] && ($ph === 'clan' || $ph === 'priority')) {
+            $wkNew = week_id_for_date($newIn);
+            $weekRow = null;
+            if ($wkNew) {
+                foreach (generate_weeks($wkNew['year']) as $w) {
+                    if ($w['id'] === $wkNew['week_id']) { $weekRow = $w; break; }
+                }
+            }
+            $ok = false;
+            if ($weekRow) {
+                foreach (stay_shapes($weekRow) as $r) {
+                    if ($r['start'] === $newIn && $r['end'] === $newOut) { $ok = true; break; }
+                }
+            }
+            if (!$ok) json_error('A clan or priority stay must be a week, a midweek or a weekend');
+        }
 
         $stmt = $db->prepare("
             SELECT id, week_id, year, check_in_date, check_out_date

@@ -427,6 +427,64 @@ function format_booking_number($year, $seq): ?string {
     return sprintf('%02d-%d', ((int)$year) % 100, (int)$seq);
 }
 
+// ---- Released priority bookings ----------------------------------------
+// A priority booking may be given up and used again on other dates, but
+// the dates it held do not simply come back to that member as an ordinary
+// booking: otherwise priority becomes a way to hold a prime week outside
+// the 3-month window, drop it, take the same week as a regular booking and
+// still have the priority left over. So every release is remembered.
+function ensure_priority_release_table() {
+    static $done = false;
+    if ($done) return;
+    $done = true;
+    try {
+        get_db()->exec("
+            CREATE TABLE IF NOT EXISTS `fargny_priority_releases` (
+              `id`             INT UNSIGNED NOT NULL AUTO_INCREMENT,
+              `user_id`        INT UNSIGNED NOT NULL,
+              `year`           SMALLINT UNSIGNED NOT NULL,
+              `check_in_date`  DATE NOT NULL,
+              `check_out_date` DATE NOT NULL,
+              `released_at`    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              PRIMARY KEY (`id`),
+              KEY `idx_user_year` (`user_id`, `year`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        ");
+    } catch (Exception $e) { /* the rule simply does not bite until it exists */ }
+}
+
+// Record the nights a member gave up when their priority booking went away.
+// Called wherever a priority booking is actually removed — an approved
+// cancellation or an admin deletion. Moving a booking is not a release:
+// the member still holds their one priority stay.
+function record_priority_release(array $booking) {
+    if (($booking['phase'] ?? '') !== 'priority') return;
+    ensure_priority_release_table();
+    $in  = $booking['check_in_date']  ?? null;
+    $out = $booking['check_out_date'] ?? null;
+    if (!$in || !$out) return;
+    try {
+        get_db()->prepare("
+            INSERT INTO fargny_priority_releases (user_id, year, check_in_date, check_out_date)
+            VALUES (?, ?, ?, ?)
+        ")->execute([(int)$booking['user_id'], (int)$booking['year'], $in, $out]);
+    } catch (Exception $e) {}
+}
+
+// The night ranges this member has released. Used to keep them off those
+// dates as a regular booking.
+function priority_releases_for(int $userId): array {
+    ensure_priority_release_table();
+    try {
+        $stmt = get_db()->prepare("
+            SELECT check_in_date, check_out_date
+            FROM fargny_priority_releases WHERE user_id = ?
+        ");
+        $stmt->execute([$userId]);
+        return $stmt->fetchAll() ?: [];
+    } catch (Exception $e) { return []; }
+}
+
 // The skill slugs a profile may claim. Anything else is rejected.
 function profile_skill_slugs(): array {
     return ['garden', 'maintenance', 'cooking', 'pruning', 'cleaning'];

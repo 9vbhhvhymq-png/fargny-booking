@@ -216,3 +216,70 @@ function send_cancellation_approved(array $user, array $booking) {
 
     send_email($email, "Cancellation Approved: $weekId", email_template('Cancellation Approved', $content));
 }
+
+// ---- Clan and priority round announcements ---------------------------
+// Sent by notify.php on a schedule. Each of these goes to the whole
+// shareholder list, so they say what to do and stop.
+
+function send_clan_open(array $user, array $cfg, int $year) {
+    $email = $user['email'] ?? '';
+    if (!$email) return;
+    $content = '<p style="color:#2C1810;font-size:15px;">Dear ' . htmlspecialchars($user['display_name'] ?? '') . ',</p>
+    <p style="color:#2C1810;font-size:15px;">Clan booking for <strong>' . $year . '</strong> is now open.</p>
+    <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+    <tr><td style="padding:8px 12px;color:#8B7D6B;font-size:13px;">Book by</td><td style="padding:8px 12px;color:#2C1810;font-size:13px;font-weight:600;">' . htmlspecialchars($cfg['clan_end']) . '</td></tr>
+    <tr><td style="padding:8px 12px;color:#8B7D6B;font-size:13px;">Results shown</td><td style="padding:8px 12px;color:#2C1810;font-size:13px;font-weight:600;">' . htmlspecialchars($cfg['clan_reveal']) . '</td></tr>
+    </table>
+    <p style="color:#2C1810;font-size:14px;">Your branch may take one clan stay for the year: a week, a midweek or a weekend.</p>
+    <p style="color:#8B7D6B;font-size:13px;">This round is blind. Until ' . htmlspecialchars($cfg['clan_reveal']) . ' nobody can see who has booked what, so more than one branch may end up choosing the same week. If that happens you will be told on the reveal date and can change your dates then. Book the week you actually want rather than the one you think is free.</p>';
+    send_email($email, "Clan booking for $year is open", email_template('Clan Booking Open', $content));
+}
+
+function send_clan_reveal(array $user, int $year, bool $anyClashes) {
+    $email = $user['email'] ?? '';
+    if (!$email) return;
+    $clashLine = $anyClashes
+        ? '<p style="color:#B85042;font-size:14px;">Some weeks were claimed by more than one branch. If yours is one of them you have a separate email about it.</p>'
+        : '<p style="color:#4A7C59;font-size:14px;">Every branch got the week it asked for &mdash; there were no clashes.</p>';
+    $content = '<p style="color:#2C1810;font-size:15px;">Dear ' . htmlspecialchars($user['display_name'] ?? '') . ',</p>
+    <p style="color:#2C1810;font-size:15px;">The clan bookings for <strong>' . $year . '</strong> are now visible to everyone.</p>'
+    . $clashLine .
+    '<p style="color:#8B7D6B;font-size:13px;">Open the Calendar tab to see who has which week.</p>';
+    send_email($email, "Clan bookings for $year are now visible", email_template('Clan Bookings Revealed', $content));
+}
+
+function send_priority_reveal(array $user, int $year) {
+    $email = $user['email'] ?? '';
+    if (!$email) return;
+    $content = '<p style="color:#2C1810;font-size:15px;">Dear ' . htmlspecialchars($user['display_name'] ?? '') . ',</p>
+    <p style="color:#2C1810;font-size:15px;">The priority bookings for <strong>' . $year . '</strong> are now visible to everyone.</p>
+    <p style="color:#8B7D6B;font-size:13px;">Open the Calendar tab to see them. Priority bookings can be made all year round, one per member per year.</p>';
+    send_email($email, "Priority bookings for $year are now visible", email_template('Priority Bookings Revealed', $content));
+}
+
+// Sent only to the members whose clan stays landed on the same nights.
+function send_clan_clash(array $user, array $booking, array $others, int $year) {
+    $email = $user['email'] ?? '';
+    if (!$email) return;
+
+    $rows = '';
+    foreach ($others as $o) {
+        $rows .= '<tr><td style="padding:8px 12px;color:#2C1810;font-size:13px;">'
+              . htmlspecialchars($o['display_name'] ?? '') . '</td>'
+              . '<td style="padding:8px 12px;color:#8B7D6B;font-size:13px;">'
+              . htmlspecialchars($o['branch_name'] ?? '') . '</td></tr>';
+    }
+    $mine = htmlspecialchars(($booking['check_in_date'] ?? '') . ' to ' . ($booking['check_out_date'] ?? ''));
+
+    $content = '<p style="color:#2C1810;font-size:15px;">Dear ' . htmlspecialchars($user['display_name'] ?? '') . ',</p>
+    <p style="color:#2C1810;font-size:15px;">The clan round for <strong>' . $year . '</strong> has been revealed, and your stay
+    (<strong>' . $mine . '</strong>) lands on the same nights as another branch.</p>
+    <p style="color:#2C1810;font-size:14px;">Also claiming those nights:</p>
+    <table style="width:100%;border-collapse:collapse;margin:12px 0;">' . $rows . '</table>
+    <p style="color:#2C1810;font-size:14px;">Because the round was blind, neither of you could see the other. Open <strong>My Bookings</strong>
+    and change your dates to a week that is free, or agree between yourselves who moves.</p>
+    <p style="color:#8B7D6B;font-size:13px;">If the clash is still there in a while, Moritz will settle it and let you both know.</p>';
+
+    send_email($email, "Clan booking clash for $year - please change your dates",
+               email_template('Clan Booking Clash', $content));
+}

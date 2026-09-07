@@ -44,7 +44,10 @@ Strato shared hosting.
   `booking_seq` (added at runtime; the family's number, shown as `YY-N`).
 - `payments` — one per booking; `guest_data` = 7 nights of `{child04,
   child59, adult}`. Also `shareholders`, `board_events`/`board_signups`.
-- `settings` — key/value; holds the registration gate's `gate_question_en`
+- `priority_releases` — user_id + the nights of a priority booking that was
+  given up; created by `ensure_priority_release_table()`.
+- `settings` — key/value; the registration gate, plus `notified_*` markers so
+  `notify.php` never sends an announcement twice. Holds `gate_question_en`
   /`_nl` and `gate_answer`. Plus `gate_tokens` (1-hour passes) and
   `gate_attempts` (rate limiting). All created by `ensure_gate_tables()`.
 
@@ -58,21 +61,33 @@ Strato shared hosting.
    is free-form — any arrival, any departure, no maximum length. Dates sent
    empty mean the whole week.
 4. **Regular bookings open exactly 3 months before arrival**, rolling, all year.
-   Clan and priority have their own windows and ignore this.
+   **Priority runs all year and ignores the horizon** — that is the privilege.
+   Only clan has a booking window (`clan_start`..`clan_end`).
 5. **Clan = one booking per branch per year; priority = one per user** —
    one booking whatever its length, so a branch taking a weekend has used
    its clan booking. Both blind until reveal. A partial clan stay leaves the
    rest of that week bookable by anyone.
-6. **Family members never create or change anything** — enforced server-side
+6. **The clan round is a blind auction.** Until `clan_reveal`, clan stays
+   *may* overlap **other clan stays** — that is the point — but never a
+   regular booking, a gcal entry or an event. At reveal, names and clashes
+   appear together (`clan_clash_map()`); the owners move their own dates,
+   and the admin settles anything left. No new clash after the reveal.
+7. **A released priority booking frees the entitlement, not the dates.**
+   Give one up and it can be used again elsewhere, but those nights are
+   closed to that member as a *regular* booking — otherwise priority is a
+   way to hold a week beyond the horizon and still keep the privilege.
+   Recorded in `priority_releases` on an approved cancellation or an admin
+   delete; a *move* is not a release. Admins bypass it.
+8. **Family members never create or change anything** — enforced server-side
    by `require_shareholder()`, not just hidden in the UI.
-7. **No profile data in `bookings/public-calendar`**; hidden fields dropped in
+9. **No profile data in `bookings/public-calendar`**; hidden fields dropped in
    PHP.
-8. **A booking number is stored, never derived.** `booking_seq` is the
+10. **A booking number is stored, never derived.** `booking_seq` is the
    booking's place in its year, claimed once and never reused or shifted —
    it is quoted in confirmation emails, so renumbering would invalidate
    what people were told. Only a cross-year move changes it (the year is
    half the number), and the member is emailed when that happens.
-9. **Registration and the shareholder roster sit behind the family question**
+11. **Registration and the shareholder roster sit behind the family question**
    — `require_gate_pass()` in `auth_register()` and `branches_shareholders()`.
    It **fails open** while `gate_answer` is empty, so an unset answer means no
    gate at all, not a locked-out family. The answer lives in the DB, set from
