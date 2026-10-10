@@ -1,246 +1,176 @@
 <?php
 // ============================================================
-// Scheduled announcements for the clan and priority rounds.
+// The annual notification schedule.
 //
-// Strato has no scheduler this app can reach, so this endpoint is
-// driven from outside — a cron job in the Strato panel or a GitHub
-// Actions schedule calling it once a day. Everything it sends is
-// recorded in fargny_settings, so calling it twice, or ten times,
-// sends nothing twice. That matters more than getting the timing
-// exactly right: a duplicate "booking is open" mail to the whole
-// family is worse than one arriving a few hours late.
+// Each job is a date, a set of recipients and a template. A job is due
+// once its date has passed and it has not already gone out; the log
+// decides the second part, so running this twice sends nothing twice.
+//
+// Nothing here fires on its own. Something must call /api/notify/run —
+// an external cron, or the button in the admin panel. For six fixed
+// dates a year the button is a perfectly reasonable answer.
 // ============================================================
 
+// Which season is currently being booked. The cycle starts in the autumn
+// of the preceding year: in October 2026 the family is booking 2027.
+function active_booking_year(?string $today = null): int {
+    $t = $today ? strtotime($today) : time();
+    $y = (int)date('Y', $t);
+    $m = (int)date('n', $t);
+    return $m >= 10 ? $y + 1 : $y;
+}
+
+// A job that fell due long ago is not sent. Without this, the first time
+// a scheduler is ever switched on it would fire every announcement whose
+// date had passed — in January that means posting the October kickoff.
+const NOTIFY_STALE_AFTER_DAYS = 21;
+
+// The schedule. Stage by stage: the later announcements arrive with the
+// rules they describe, rather than sitting here saying the wrong thing.
+function notify_jobs(int $year): array {
+    return [
+        [
+            'key'       => 'kickoff',
+            'due'       => cycle_date('kickoff', $year),
+            'label'     => 'Kickoff: how booking works this year',
+            'template'  => 'kickoff',
+            'audience'  => 'everyone',
+        ],
+        [
+            'key'       => 'clan_open',
+            'due'       => cycle_date('clan_open', $year),
+            'label'     => 'The clan round is open',
+            'template'  => 'clan_open',
+            'audience'  => 'shareholders',
+        ],
+    ];
+}
+
+// Recipients for an audience name.
+function notify_audience(string $audience): array {
+    if ($audience === 'shareholders') {
+        ensure_role_columns();
+        try {
+            return get_db()->query("
+                SELECT id, display_name, email, branch_id
+                FROM fargny_users
+                WHERE email <> '' AND (role IS NULL OR role <> 'family_member')
+                ORDER BY display_name
+            ")->fetchAll() ?: [];
+        } catch (Exception $e) { return notify_recipients(); }
+    }
+    return notify_recipients();
+}
+
+// What the scheduler would do right now, without doing it.
+function notify_status(?string $today = null): array {
+    $todayIso = $today ?: date('Y-m-d');
+    $year     = active_booking_year($todayIso);
+    $out      = [];
+    foreach (notify_jobs($year) as $job) {
+        $key  = $job['key'] . '_' . $year;
+        $due  = $job['due'];
+        $sent = notif_any_sent($key);
+        $ageDays = $due ? (int)floor((strtotime($todayIso) - strtotime($due)) / 86400) : null;
+        $state = 'scheduled';
+        if ($sent)                                        $state = 'sent';
+        elseif ($due === null)                            $state = 'no date';
+        elseif ($todayIso < $due)                         $state = 'scheduled';
+        elseif ($ageDays > NOTIFY_STALE_AFTER_DAYS)       $state = 'skipped (too old)';
+        else                                              $state = 'due';
+        $out[] = [
+            'key'        => $key,
+            'label'      => $job['label'],
+            'template'   => $job['template'],
+            'audience'   => $job['audience'],
+            'due_date'   => $due,
+            'state'      => $state,
+            'recipients' => count(notify_audience($job['audience'])),
+        ];
+    }
+    return ['today' => $todayIso, 'booking_year' => $year,
+            'notifications_enabled' => notifications_enabled(),
+            'dry_run' => mail_dry_run(), 'jobs' => $out];
+}
+
 // GET|POST /api/notify/run
-//   ?token=<NOTIFY_TOKEN>   for the scheduler
-//   or an admin session     for a manual run from the admin panel
-//   &dry=1                  report what would go out, send nothing
+//   ?token=<NOTIFY_TOKEN>  for an external scheduler
+//   or an admin session    for the button in the admin panel
+//   &dry=1                 report what would go out, send nothing
+//   &only=<key>            run one job (the manual trigger)
+//   &force=1               admin only: ignore the master switch
 function notify_run() {
-    $token    = (string)($_GET['token'] ?? '');
-    $expected = (string)env('NOTIFY_TOKEN', '');
-    $isAdmin  = false;
+    $isAdmin = false;
     $u = get_auth_user();
     if ($u && !empty($u['is_admin'])) $isAdmin = true;
 
     if (!$isAdmin) {
+        $expected = (string)env('NOTIFY_TOKEN', '');
+        $token    = (string)($_GET['token'] ?? '');
         if ($expected === '' || !hash_equals($expected, $token)) {
             json_error('Not authorised', 403);
         }
     }
 
-    $dry   = !empty($_GET['dry']);
-    $today = date('Y-m-d');
-    $db    = get_db();
     require_once __DIR__ . '/email.php';
+    require_once __DIR__ . '/notifications.php';
+    require_once __DIR__ . '/notify_templates.php';
 
-    $sent = [];
+    $dry   = !empty($_GET['dry']);
+    $only  = (string)($_GET['only'] ?? '');
+    $force = $isAdmin && !empty($_GET['force']);
+    $today = date('Y-m-d');
+    $year  = active_booking_year($today);
 
-    // Weeks that have just come within reach. Regular booking opens a fixed
-    // number of months before arrival, so new dates cross the line every
-    // day; without this nobody knows unless they happen to look.
-    $sent[] = notify_open_weeks($dry);
+    // One run at a time. Cron and a hand-pressed button must not both
+    // start the same broadcast.
+    $lock = scheduler_lock_acquire(600);
+    if (!$lock) json_error('A notification run is already in progress', 409);
 
-    $rows = $db->query("SELECT * FROM fargny_phase_config ORDER BY year")->fetchAll();
+    $actions = [];
+    try {
+        foreach (notify_jobs($year) as $job) {
+            $key = $job['key'] . '_' . $year;
+            if ($only !== '' && $only !== $key && $only !== $job['key']) continue;
+            if (!$job['due']) continue;
 
-    foreach ($rows as $cfg) {
-        $year = (int)$cfg['year'];
+            // A manual trigger may run a job before its date; the
+            // scheduler may not.
+            $dueNow = $today >= $job['due'];
+            if (!$dueNow && !($isAdmin && $only !== '')) continue;
 
-        // 1. The clan round opens.
-        if ($cfg['clan_start'] && $today >= $cfg['clan_start'] && $today <= $cfg['clan_end']) {
-            $sent[] = notify_once("clan_open_$year", $dry, function () use ($cfg, $year) {
-                $n = 0;
-                foreach (notify_shareholders() as $m) { send_clan_open($m, $cfg, $year); $n++; }
-                return $n;
-            });
+            $age = (int)floor((strtotime($today) - strtotime($job['due'])) / 86400);
+            if ($dueNow && $age > NOTIFY_STALE_AFTER_DAYS && !($isAdmin && $only !== '')) {
+                $actions[] = ['key' => $key, 'skipped' => 'past due by ' . $age . ' days'];
+                continue;
+            }
+
+            if (notif_any_sent($key)) {
+                $actions[] = ['key' => $key, 'skipped' => 'already sent'];
+                continue;
+            }
+
+            $members = notify_audience($job['audience']);
+            if ($dry) {
+                $actions[] = ['key' => $key, 'would_send_to' => count($members)];
+                continue;
+            }
+
+            $tpl   = $job['template'];
+            $tally = notify_broadcast($key, $members,
+                function (array $m) use ($tpl, $year) { return notify_compose($tpl, $m, $year); },
+                $force);
+            $actions[] = array_merge(['key' => $key], array_filter($tally));
         }
-
-        // 2b. The clan window is about to close. Only to the branches that
-        // have not booked — the ones who can still lose their turn.
-        if ($cfg['clan_end'] && $today <= $cfg['clan_end']
-            && $today >= date('Y-m-d', strtotime($cfg['clan_end'] . ' -3 days'))) {
-            $sent[] = notify_once("clan_closing_$year", $dry, function () use ($cfg, $year) {
-                $n = 0;
-                foreach (notify_branches_without_clan($year) as $m) {
-                    send_clan_closing($m, $cfg, $year); $n++;
-                }
-                return $n;
-            });
-        }
-
-        // 3. The clan round is revealed, clashes and all.
-        if ($cfg['clan_reveal'] && $today >= $cfg['clan_reveal']) {
-            $sent[] = notify_once("clan_reveal_$year", $dry, function () use ($year) {
-                $clashes = clan_clash_map($year);
-                $n = 0;
-                foreach (notify_shareholders() as $m) { send_clan_reveal($m, $year, count($clashes) > 0); $n++; }
-                // The members actually caught in a clash get their own mail
-                // naming who else claimed those nights.
-                foreach (notify_clash_parties($year, $clashes) as $party) {
-                    send_clan_clash($party['user'], $party['booking'], $party['others'], $year);
-                    $n++;
-                }
-                return $n;
-            });
-        }
-
-        // Priority is booked all year but still stays hidden until its
-        // reveal date, so that date is worth announcing too.
-        if ($cfg['priority_reveal'] && $today >= $cfg['priority_reveal']) {
-            $sent[] = notify_once("priority_reveal_$year", $dry, function () use ($year) {
-                $n = 0;
-                foreach (notify_shareholders() as $m) { send_priority_reveal($m, $year); $n++; }
-                return $n;
-            });
-        }
+    } finally {
+        scheduler_lock_release($lock);
     }
 
     json_success([
-        'today'   => $today,
-        'dry_run' => $dry,
-        'actions' => array_values(array_filter($sent)),
+        'today'        => $today,
+        'booking_year' => $year,
+        'dry_run'      => $dry,
+        'enabled'      => notifications_enabled(),
+        'actions'      => $actions,
     ]);
-}
-
-// Run $fn only if this announcement has never gone out. The marker is
-// written before sending: a half-finished run is better than a second
-// full one landing in everyone's inbox.
-function notify_once(string $key, bool $dry, callable $fn) {
-    $settingKey = 'notified_' . $key;
-    if (setting_get($settingKey, '') !== '') return null;
-    if ($dry) return ['announcement' => $key, 'would_send' => true];
-    setting_set($settingKey, date('Y-m-d H:i:s'));
-    try {
-        $count = $fn();
-        return ['announcement' => $key, 'emails' => $count];
-    } catch (Exception $e) {
-        return ['announcement' => $key, 'error' => $e->getMessage()];
-    }
-}
-
-// Everyone who can actually make a clan or priority booking. Family
-// members are left out on purpose: telling them a round they cannot enter
-// is open is noise.
-function notify_shareholders(): array {
-    ensure_role_columns();
-    $rows = get_db()->query("
-        SELECT id, display_name, email, branch_id
-        FROM fargny_users
-        WHERE email <> '' AND (role IS NULL OR role <> 'family_member')
-    ")->fetchAll();
-    return $rows ?: [];
-}
-
-// Everyone, family members included: which weeks are open is worth knowing
-// even if you are not the one who books. Honours the opt-out, which covers
-// the recurring mail only — never anything about a member's own booking.
-function notify_all_members(): array {
-    ensure_profile_columns();
-    try {
-        $rows = get_db()->query("
-            SELECT id, display_name, email, branch_id
-            FROM fargny_users
-            WHERE email <> '' AND (notify_opt_out IS NULL OR notify_opt_out = 0)
-        ")->fetchAll();
-    } catch (Exception $e) {
-        // Before the column exists, nobody has opted out.
-        $rows = get_db()->query("SELECT id, display_name, email, branch_id
-                                 FROM fargny_users WHERE email <> ''")->fetchAll();
-    }
-    return $rows ?: [];
-}
-
-// One member per branch that has not made its clan booking yet, so the
-// reminder goes to the people who can still act on it.
-function notify_branches_without_clan(int $year): array {
-    ensure_role_columns();
-    $db = get_db();
-    $rows = $db->prepare("
-        SELECT u.id, u.display_name, u.email, u.branch_id
-        FROM fargny_users u
-        WHERE u.email <> ''
-          AND (u.role IS NULL OR u.role <> 'family_member')
-          AND NOT EXISTS (
-              SELECT 1 FROM fargny_bookings b
-              WHERE b.branch_id = u.branch_id AND b.year = ?
-                AND b.phase = 'clan' AND b.cancellation_status NOT IN ('approved')
-          )
-    ");
-    $rows->execute([$year]);
-    return $rows->fetchAll() ?: [];
-}
-
-// ---- The rolling horizon ---------------------------------------------
-// Which weeks became bookable since the last time we said so. The last
-// horizon reported is remembered, so nothing is announced twice and
-// nothing is skipped, whatever day the scheduler actually runs.
-function notify_open_weeks(bool $dry) {
-    $horizon = date('Y-m-d', strtotime('+' . REGULAR_MONTHS_AHEAD . ' months'));
-    $last    = setting_get('open_weeks_last_horizon', '');
-
-    // First ever run: start the clock, announce nothing. Otherwise the very
-    // first mail would list three months of weeks as though they were news.
-    if ($last === '') {
-        if (!$dry) setting_set('open_weeks_last_horizon', $horizon);
-        return ['announcement' => 'open_weeks', 'first_run' => true, 'emails' => 0];
-    }
-    if ($horizon <= $last) return null;
-
-    // At most one of these a week, however often the scheduler runs.
-    $weekKey = 'open_weeks_' . date('o-\WW');
-    if (setting_get('notified_' . $weekKey, '') !== '') return null;
-
-    $opened = [];
-    foreach ([(int)substr($last, 0, 4), (int)substr($horizon, 0, 4)] as $y) {
-        foreach (generate_weeks($y) as $w) {
-            if ($w['start'] > $last && $w['start'] <= $horizon) $opened[$w['id']] = $w;
-        }
-    }
-    ksort($opened);
-    if (!$opened) return null;
-
-    if ($dry) return ['announcement' => $weekKey, 'weeks' => count($opened), 'would_send' => true];
-
-    setting_set('notified_' . $weekKey, date('Y-m-d H:i:s'));
-    setting_set('open_weeks_last_horizon', $horizon);
-    $n = 0;
-    try {
-        foreach (notify_all_members() as $m) { send_weeks_open($m, array_values($opened)); $n++; }
-    } catch (Exception $e) {
-        return ['announcement' => $weekKey, 'error' => $e->getMessage()];
-    }
-    return ['announcement' => $weekKey, 'weeks' => count($opened), 'emails' => $n];
-}
-
-// For each clashing clan booking, the member who made it and who else
-// claimed those nights.
-function notify_clash_parties(int $year, array $clashMap): array {
-    if (!$clashMap) return [];
-    $db = get_db();
-    $ids = array_unique(array_merge(array_keys($clashMap), ...array_values($clashMap)));
-    if (!$ids) return [];
-    $in = implode(',', array_fill(0, count($ids), '?'));
-    $stmt = $db->prepare("
-        SELECT b.*, u.display_name, u.email, br.name AS branch_name
-        FROM fargny_bookings b
-        JOIN fargny_users u ON u.id = b.user_id
-        JOIN fargny_branches br ON br.id = b.branch_id
-        WHERE b.id IN ($in)
-    ");
-    $stmt->execute(array_values($ids));
-    $byId = [];
-    foreach ($stmt->fetchAll() as $r) $byId[(int)$r['id']] = $r;
-
-    $out = [];
-    foreach ($clashMap as $id => $otherIds) {
-        if (!isset($byId[$id])) continue;
-        $others = [];
-        foreach ($otherIds as $oid) if (isset($byId[$oid])) $others[] = $byId[$oid];
-        if (!$others) continue;
-        $out[] = [
-            'user'    => ['display_name' => $byId[$id]['display_name'], 'email' => $byId[$id]['email']],
-            'booking' => $byId[$id],
-            'others'  => $others,
-        ];
-    }
-    return $out;
 }

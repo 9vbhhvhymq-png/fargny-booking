@@ -45,6 +45,22 @@ function handle_admin(string $action, string $id, string $method) {
             if ($method !== 'GET') json_error('GET required', 405);
             admin_members_without_email();
             break;
+        case 'notifications':
+            if ($method !== 'GET') json_error('GET required', 405);
+            admin_notifications();
+            break;
+        case 'notification-preview':
+            if ($method !== 'GET') json_error('GET required', 405);
+            admin_notification_preview();
+            break;
+        case 'notification-test':
+            if ($method !== 'POST') json_error('POST required', 405);
+            admin_notification_test();
+            break;
+        case 'notification-settings':
+            if ($method !== 'POST' && $method !== 'PUT') json_error('POST required', 405);
+            admin_notification_settings();
+            break;
         case 'gate':
             if ($method === 'GET') gate_admin_get();
             elseif ($method === 'POST' || $method === 'PUT') gate_admin_save();
@@ -177,6 +193,129 @@ function admin_members_without_email() {
                     'branch'         => $r['branch_name']];
         }, $rows),
     ]);
+}
+
+// ---- Notifications ---------------------------------------------------
+
+// What is scheduled, what has gone out, and to whom.
+function admin_notifications() {
+    require_admin();
+    require_once __DIR__ . '/email.php';
+    require_once __DIR__ . '/notifications.php';
+    require_once __DIR__ . '/notify.php';
+
+    $status = notify_status($_GET['as_of'] ?? null);
+
+    $log = [];
+    try {
+        $log = get_db()->query("
+            SELECT notification_key, recipient_email, subject, status, attempts,
+                   error, transport, created_at, sent_at
+            FROM fargny_notifications_log
+            ORDER BY COALESCE(sent_at, created_at) DESC
+            LIMIT 300
+        ")->fetchAll() ?: [];
+    } catch (Exception $e) {}
+
+    // A per-notification roll-up, which is what you actually want to see
+    // after a broadcast: how many landed, how many failed, who failed.
+    $summary = [];
+    foreach ($log as $r) {
+        $k = $r['notification_key'];
+        if (!isset($summary[$k])) $summary[$k] = ['key'=>$k,'sent'=>0,'failed'=>0,
+                                                  'dry_run'=>0,'sending'=>0,'last'=>null,'failures'=>[]];
+        $st = $r['status'];
+        if (!isset($summary[$k][$st])) $summary[$k][$st] = 0;
+        $summary[$k][$st]++;
+        if ($st === 'failed') $summary[$k]['failures'][] = $r['recipient_email'];
+        $when = $r['sent_at'] ?: $r['created_at'];
+        if ($when && (!$summary[$k]['last'] || $when > $summary[$k]['last'])) $summary[$k]['last'] = $when;
+    }
+
+    $status['log']     = $log;
+    $status['summary'] = array_values($summary);
+    $status['contact'] = notify_contact();
+    json_success($status);
+}
+
+// Render a notification exactly as it would be sent, with sample data if
+// asked. Never sends; safe to open at any time.
+function admin_notification_preview() {
+    $admin = require_admin();
+    require_once __DIR__ . '/email.php';
+    require_once __DIR__ . '/notifications.php';
+    require_once __DIR__ . '/notify_templates.php';
+    require_once __DIR__ . '/notify.php';
+
+    $tpl  = (string)($_GET['template'] ?? 'kickoff');
+    $year = (int)($_GET['year'] ?? active_booking_year());
+    if (!isset(notify_default_templates()[$tpl])) json_error('Unknown template', 404);
+
+    // Sample data by default so the preview shows what a member sees,
+    // not what the admin happens to be called.
+    $sample = !isset($_GET['real']) || $_GET['real'] !== '1';
+    $member = $sample
+        ? ['id' => 0, 'display_name' => 'Barbara van de Loo', 'email' => 'voorbeeld@example.org']
+        : ['id' => (int)$admin['id'], 'display_name' => $admin['display_name'], 'email' => $admin['email']];
+
+    [$subject, $html] = notify_compose($tpl, $member, $year);
+    json_success(['template' => $tpl, 'year' => $year, 'sample' => $sample,
+                  'subject' => $subject, 'html' => $html]);
+}
+
+// Send one notification to one address, now, ignoring both the master
+// switch and the log. This is how the wording gets checked against a
+// real inbox before it goes to the family.
+function admin_notification_test() {
+    $admin = require_admin();
+    require_once __DIR__ . '/email.php';
+    require_once __DIR__ . '/notifications.php';
+    require_once __DIR__ . '/notify_templates.php';
+    require_once __DIR__ . '/notify.php';
+
+    $body = get_json_body();
+    $tpl  = (string)($body['template'] ?? 'kickoff');
+    $to   = trim((string)($body['to'] ?? ($admin['email'] ?? '')));
+    $year = (int)($body['year'] ?? active_booking_year());
+
+    if (!isset(notify_default_templates()[$tpl])) json_error('Unknown template', 404);
+    if (!filter_var($to, FILTER_VALIDATE_EMAIL)) json_error('A valid address is required');
+
+    // Addressed to the admin by name, so the test reads like the real thing.
+    $member = ['id' => (int)$admin['id'],
+               'display_name' => $admin['display_name'], 'email' => $to];
+    [$subject, $html] = notify_compose($tpl, $member, $year);
+
+    // Deliberately NOT notif_send_once: a test must be repeatable, and it
+    // must not consume the log entry that protects the real broadcast.
+    $subject = '[TEST] ' . $subject;
+    $result  = send_email_result($to, $subject, $html, true);
+
+    json_success(['to' => $to, 'template' => $tpl, 'subject' => $subject,
+                  'sent' => $result['ok'], 'transport' => $result['transport'],
+                  'error' => $result['error'],
+                  'note' => mail_dry_run()
+                      ? 'Dry run is ON, so nothing was actually sent.'
+                      : 'Sent via ' . $result['transport'] . '.']);
+}
+
+// The two switches and the contact details.
+function admin_notification_settings() {
+    require_admin();
+    $body = get_json_body();
+    $allowed = ['notifications_enabled', 'mail_dry_run', 'broadcast_pause_ms',
+                'contact_name', 'contact_email', 'contact_whatsapp', 'app_url'];
+    $saved = [];
+    foreach ($allowed as $k) {
+        if (!array_key_exists($k, $body)) continue;
+        $v = $body[$k];
+        if (in_array($k, ['notifications_enabled', 'mail_dry_run'], true)) {
+            $v = !empty($v) ? '1' : '0';
+        }
+        setting_set($k, (string)$v);
+        $saved[$k] = (string)$v;
+    }
+    json_success(['saved' => $saved]);
 }
 
 function admin_parse_email() {
