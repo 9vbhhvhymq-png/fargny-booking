@@ -194,3 +194,70 @@ function template_set(string $key, array $fields) {
         ]);
     } catch (Exception $e) {}
 }
+
+// ---- The shared footer every broadcast carries -------------------------
+// Three things the family asked for on every announcement: a way into the
+// calendar, a reminder that this is the first year and entries are worth
+// checking, and a human to contact. WhatsApp leads because that is the
+// channel that actually gets read; email is the fallback.
+//
+// All of it is configurable — no person is hard-coded into a template.
+function notify_contact(): array {
+    return [
+        'name'     => setting_get('contact_name',     'Moritz'),
+        'email'    => setting_get('contact_email',    'moritz@fromageot.eu'),
+        'whatsapp' => setting_get('contact_whatsapp', '4915788611151'),
+    ];
+}
+
+function notify_app_url(): string {
+    return rtrim(setting_get('app_url', 'https://fargny.org/booking/'), '/') . '/';
+}
+
+// The bilingual footer, Dutch first. $lang picks which half to render;
+// 'both' returns the pair, which is what a broadcast uses.
+function notify_footer_html(string $lang = 'both'): string {
+    $c   = notify_contact();
+    $url = htmlspecialchars(notify_app_url());
+    $wa  = 'https://wa.me/' . preg_replace('/[^0-9]/', '', $c['whatsapp']);
+    $who = htmlspecialchars($c['name']);
+    $mail= htmlspecialchars($c['email']);
+
+    $nl = '<hr style="border:none;border-top:1px solid #E0D8CF;margin:24px 0;">
+    <p style="color:#2C1810;font-size:14px;margin:0 0 8px 0;">
+      <a href="' . $url . '" style="color:#B85042;font-weight:600;">Open de kalender</a>
+    </p>
+    <p style="color:#8B7D6B;font-size:13px;margin:0 0 8px 0;">
+      Dit is het eerste jaar met het nieuwe systeem. Controleer alsjeblieft of jouw
+      boekingen er goed in staan.
+    </p>
+    <p style="color:#8B7D6B;font-size:13px;margin:0;">
+      Klopt er iets niet? Stuur ' . $who . ' het liefst een
+      <a href="' . $wa . '" style="color:#B85042;">WhatsApp-bericht</a>,
+      of mail <a href="mailto:' . $mail . '" style="color:#B85042;">' . $mail . '</a>.
+    </p>';
+
+    $en = '<hr style="border:none;border-top:1px solid #E0D8CF;margin:24px 0;">
+    <p style="color:#2C1810;font-size:14px;margin:0 0 8px 0;">
+      <a href="' . $url . '" style="color:#B85042;font-weight:600;">Open the calendar</a>
+    </p>
+    <p style="color:#8B7D6B;font-size:13px;margin:0 0 8px 0;">
+      This is the first year of the new system. Please check that your bookings
+      appear the way you intended.
+    </p>
+    <p style="color:#8B7D6B;font-size:13px;margin:0;">
+      If something looks wrong, the quickest way to reach ' . $who . ' is
+      <a href="' . $wa . '" style="color:#B85042;">WhatsApp</a>;
+      otherwise email <a href="mailto:' . $mail . '" style="color:#B85042;">' . $mail . '</a>.
+    </p>';
+
+    if ($lang === 'nl') return $nl;
+    if ($lang === 'en') return $en;
+    return $nl . $en;
+}
+
+// A language divider for the one-message-two-languages format.
+function notify_lang_divider(): string {
+    return '<div style="margin:28px 0 8px 0;padding-top:16px;border-top:2px solid #E0D8CF;
+            font-size:11px;font-weight:700;letter-spacing:.08em;color:#8B7D6B;">ENGLISH</div>';
+}
