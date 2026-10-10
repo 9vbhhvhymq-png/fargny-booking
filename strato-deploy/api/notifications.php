@@ -346,3 +346,11 @@ function notify_recipients(bool $honourOptOut = false): array {
         catch (Exception $e2) { return []; }
     }
 }
+
+// Just the way in, for templates whose own text already says the rest.
+function notify_calendar_link_html(string $lang): string {
+    $url = htmlspecialchars(notify_app_url());
+    $label = $lang === 'nl' ? 'Open de kalender' : 'Open the calendar';
+    return '<p style="margin:20px 0 0 0;"><a href="' . $url
+         . '" style="color:#B85042;font-weight:600;font-size:14px;">' . $label . '</a></p>';
+}
