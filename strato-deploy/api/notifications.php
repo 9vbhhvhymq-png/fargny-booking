@@ -27,6 +27,7 @@ function ensure_notification_tables() {
               `recipient_user_id` INT UNSIGNED DEFAULT NULL,
               `subject`          VARCHAR(255) DEFAULT NULL,
               `status`           VARCHAR(20) NOT NULL DEFAULT 'sending',
+              `attempts`         TINYINT UNSIGNED NOT NULL DEFAULT 1,
               `error`            VARCHAR(500) DEFAULT NULL,
               `transport`        VARCHAR(20)  DEFAULT NULL,
               `created_at`       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -101,12 +102,23 @@ function scheduler_lock_release(?string $holder) {
 
 // ---- Sending one notification ----------------------------------------
 
-// Claim the (key, recipient) pair. Returns false when it is already
-// claimed, which is what makes every run safe to repeat.
+// How many times a failed send is retried before it is left alone.
+const NOTIF_MAX_ATTEMPTS = 3;
+
+// Claim the (key, recipient) pair. Returns false when this recipient is
+// already dealt with, which is what makes every run safe to repeat.
+//
+// A row that previously FAILED is re-claimed: mail() told us plainly that
+// it did not queue the message, so trying again cannot duplicate anything
+// and not trying again silently drops that person from the announcement.
+// 'sent' and 'dry_run' are final. 'sending' is treated as final too — a
+// run that died mid-send may well have delivered, and a possible
+// duplicate is worse than a possible miss.
 function notif_claim(string $key, string $email, ?int $userId, string $subject): bool {
     ensure_notification_tables();
+    $db = get_db();
     try {
-        $stmt = get_db()->prepare("
+        $stmt = $db->prepare("
             INSERT INTO fargny_notifications_log
                 (notification_key, recipient_email, recipient_user_id, subject, status)
             VALUES (?, ?, ?, ?, 'sending')
@@ -114,7 +126,20 @@ function notif_claim(string $key, string $email, ?int $userId, string $subject):
         $stmt->execute([$key, $email, $userId, mb_substr($subject, 0, 255)]);
         return true;
     } catch (Exception $e) {
-        return false;   // UNIQUE violation: already handled
+        // Already a row. Retry it only if the last attempt genuinely failed
+        // and we have not already tried too often.
+        try {
+            $upd = $db->prepare("
+                UPDATE fargny_notifications_log
+                SET status = 'sending', attempts = attempts + 1
+                WHERE notification_key = ? AND recipient_email = ?
+                  AND status = 'failed' AND attempts < ?
+            ");
+            $upd->execute([$key, $email, NOTIF_MAX_ATTEMPTS]);
+            return $upd->rowCount() > 0;
+        } catch (Exception $e2) {
+            return false;
+        }
     }
 }
 
@@ -260,4 +285,63 @@ function notify_footer_html(string $lang = 'both'): string {
 function notify_lang_divider(): string {
     return '<div style="margin:28px 0 8px 0;padding-top:16px;border-top:2px solid #E0D8CF;
             font-size:11px;font-weight:700;letter-spacing:.08em;color:#8B7D6B;">ENGLISH</div>';
+}
+
+// ---- Broadcasting ------------------------------------------------------
+// One message per recipient, never a shared To or CC line: a family
+// address list in a header is both a privacy leak and a reliable way to
+// be classified as bulk mail.
+//
+// Paced, because a burst of thirty messages through a shared host's
+// mail() is exactly what rate limiters are built to catch. The run is
+// resumable by construction — each recipient is claimed individually, so
+// a run cut short by a timeout simply continues where it stopped.
+function notify_broadcast(string $key, array $members, callable $compose, bool $force = false): array {
+    $tally = ['sent' => 0, 'already_sent' => 0, 'failed' => 0,
+              'dry_run' => 0, 'skipped_no_email' => 0, 'blocked' => 0];
+
+    if (!$force && !notifications_enabled()) {
+        $tally['blocked'] = count($members);
+        return $tally;
+    }
+
+    $pauseMs = (int)setting_get('broadcast_pause_ms', '400');
+    $pauseMs = max(0, min($pauseMs, 5000));
+    $first   = true;
+
+    foreach ($members as $m) {
+        if (!$first && $pauseMs > 0) usleep($pauseMs * 1000);
+        $first = false;
+        // $compose returns [subject, html] and may personalise per member.
+        [$subject, $html] = $compose($m);
+        $status = notif_send_once($key, $m, $subject, $html);
+        if (!isset($tally[$status])) $tally[$status] = 0;
+        $tally[$status]++;
+    }
+    return $tally;
+}
+
+// The master switch. Broadcasts are OFF until someone turns them on,
+// so that configuring a cron job cannot by itself put mail in front of
+// the whole family before the wording has been read.
+// Test-sends and previews ignore this; only real broadcasts honour it.
+function notifications_enabled(): bool {
+    return setting_get('notifications_enabled', '0') === '1';
+}
+
+// Everyone who should receive a broadcast: registered members with an
+// address, minus anyone who opted out of the recurring digest. The
+// announcements in the annual cycle are not optional — they are how the
+// rounds are run — so only the recurring mail honours the opt-out.
+function notify_recipients(bool $honourOptOut = false): array {
+    ensure_profile_columns();
+    $sql = "SELECT id, display_name, email, branch_id FROM fargny_users WHERE email <> ''";
+    if ($honourOptOut) $sql .= " AND (notify_opt_out IS NULL OR notify_opt_out = 0)";
+    $sql .= " ORDER BY display_name";
+    try { return get_db()->query($sql)->fetchAll() ?: []; }
+    catch (Exception $e) {
+        try { return get_db()->query("SELECT id, display_name, email, branch_id
+                                      FROM fargny_users WHERE email <> ''")->fetchAll() ?: []; }
+        catch (Exception $e2) { return []; }
+    }
 }

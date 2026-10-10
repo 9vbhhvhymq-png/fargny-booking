@@ -17,8 +17,18 @@ if (!defined('ADMIN_CONTACT_EMAIL')) {
 // SMTP is used when SMTP_HOST is set; otherwise this falls back to mail()
 // so existing one-off messages keep working on a server with no SMTP set up.
 function send_email_result(string $to, string $subject, string $body): array {
+    // From must be on the fargny.org domain: a sender the receiving side
+    // can line up with the domain's SPF record is most of what keeps this
+    // out of a spam folder when sending through plain mail().
     $from     = env('MAIL_FROM', 'noreply@fargny.org');
-    $fromName = env('MAIL_FROM_NAME', 'Fargny Booking');
+    $fromName = env('MAIL_FROM_NAME', 'Fargny');
+    // Replies go to a human, not to the no-reply sender.
+    $replyTo  = (string)env('MAIL_REPLY_TO', '');
+    if ($replyTo === '' && function_exists('notify_contact')) {
+        $c = notify_contact();
+        $replyTo = (string)($c['email'] ?? '');
+    }
+    if ($replyTo === '') $replyTo = $from;
 
     // A global switch: compose and log everything, put nothing on the wire.
     if (mail_dry_run()) {
@@ -27,15 +37,26 @@ function send_email_result(string $to, string $subject, string $body): array {
 
     $host = (string)env('SMTP_HOST', '');
     if ($host === '') {
+        // mail() wants the subject pre-encoded or non-ASCII turns to
+        // mojibake in some clients.
+        $encodedSubject = '=?UTF-8?B?' . base64_encode($subject) . '?=';
         $headers = [
-            "From: $fromName <$from>",
-            "Reply-To: $from",
+            "From: " . mail_encode_name($fromName) . " <$from>",
+            "Reply-To: $replyTo",
             "MIME-Version: 1.0",
             "Content-Type: text/html; charset=UTF-8",
+            "Content-Transfer-Encoding: 8bit",
             "X-Mailer: Fargny-Booking/1.0",
+            // Marks this as bulk so replies-to-all and auto-responders
+            // behave, and gives filters something honest to read.
+            "Precedence: bulk",
+            "Auto-Submitted: auto-generated",
         ];
-        $ok = @mail($to, $subject, $body, implode("\r\n", $headers));
-        return ['ok' => (bool)$ok, 'error' => $ok ? '' : 'mail() returned false',
+        // -f sets the envelope sender, which is what SPF is actually
+        // checked against; without it the host's default user is used.
+        $ok = @mail($to, $encodedSubject, $body, implode("\r\n", $headers), '-f' . $from);
+        return ['ok' => (bool)$ok,
+                'error' => $ok ? '' : 'mail() returned false (queued=no)',
                 'transport' => 'mail()'];
     }
 
@@ -69,8 +90,7 @@ function send_email_result(string $to, string $subject, string $body): array {
 
         $m->setFrom($from, $fromName);
         $m->addAddress($to);
-        $reply = (string)env('MAIL_REPLY_TO', '');
-        if ($reply !== '') $m->addReplyTo($reply);
+        if ($replyTo !== '' && $replyTo !== $from) $m->addReplyTo($replyTo);
         $m->isHTML(true);
         $m->Subject = $subject;
         $m->Body    = $body;
@@ -81,6 +101,12 @@ function send_email_result(string $to, string $subject, string $body): array {
         $err = $m->ErrorInfo ?: $e->getMessage();
         return ['ok' => false, 'error' => substr($err, 0, 500), 'transport' => 'smtp'];
     }
+}
+
+// RFC 2047 for a display name, only when it needs it.
+function mail_encode_name(string $name): string {
+    if (preg_match('/^[\x20-\x7E]*$/', $name)) return '"' . addcslashes($name, '"\\') . '"';
+    return '=?UTF-8?B?' . base64_encode($name) . '?=';
 }
 
 // Backwards-compatible wrapper: every existing caller keeps working.
