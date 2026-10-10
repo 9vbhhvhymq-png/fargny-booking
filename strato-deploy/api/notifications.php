@@ -166,7 +166,8 @@ function notif_send_once(string $key, array $member, string $subject, string $bo
     if (!notif_claim($key, $email, isset($member['id']) ? (int)$member['id'] : null, $subject)) {
         return 'already_sent';
     }
-    $result = send_email_result($email, $subject, $body);
+    // Broadcasts are bulk; the headers say so.
+    $result = send_email_result($email, $subject, $body, true);
     notif_finish($key, $email, $result);
     return $result['ok'] ? ($result['transport'] === 'dry-run' ? 'dry_run' : 'sent') : 'failed';
 }

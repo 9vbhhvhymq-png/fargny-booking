@@ -16,7 +16,7 @@ if (!defined('ADMIN_CONTACT_EMAIL')) {
 //
 // SMTP is used when SMTP_HOST is set; otherwise this falls back to mail()
 // so existing one-off messages keep working on a server with no SMTP set up.
-function send_email_result(string $to, string $subject, string $body): array {
+function send_email_result(string $to, string $subject, string $body, bool $bulk = false): array {
     // From must be on the fargny.org domain: a sender the receiving side
     // can line up with the domain's SPF record is most of what keeps this
     // out of a spam folder when sending through plain mail().
@@ -47,11 +47,14 @@ function send_email_result(string $to, string $subject, string $body): array {
             "Content-Type: text/html; charset=UTF-8",
             "Content-Transfer-Encoding: 8bit",
             "X-Mailer: Fargny-Booking/1.0",
-            // Marks this as bulk so replies-to-all and auto-responders
-            // behave, and gives filters something honest to read.
-            "Precedence: bulk",
-            "Auto-Submitted: auto-generated",
         ];
+        // Only an announcement to the whole family is bulk. A booking
+        // confirmation is transactional and mislabelling it as
+        // auto-generated gets it deprioritised and suppresses replies.
+        if ($bulk) {
+            $headers[] = "Precedence: bulk";
+            $headers[] = "Auto-Submitted: auto-generated";
+        }
         // -f sets the envelope sender, which is what SPF is actually
         // checked against; without it the host's default user is used.
         $ok = @mail($to, $encodedSubject, $body, implode("\r\n", $headers), '-f' . $from);
@@ -183,8 +186,8 @@ function send_booking_confirmation(array $user, array $booking) {
         }
     }
     $paymentLine = $hasGuests
-        ? 'You will receive a payment request separately. Transfer the amount to penningmeester@fargny.org. In case of questions, send an email to penningmeester@fargny.org.'
-        : 'Payment details will follow once you fill in the guest information. In case of questions, send an email to penningmeester@fargny.org.';
+        ? 'You will receive a payment request separately. Transfer the amount to moritz@fromageot.eu. In case of questions, send an email to moritz@fromageot.eu.'
+        : 'Payment details will follow once you fill in the guest information. In case of questions, send an email to moritz@fromageot.eu.';
 
     // The family's booking number: the year, then this booking's place in
     // that year. Quoted first because it is what people refer to.
