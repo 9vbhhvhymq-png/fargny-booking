@@ -185,44 +185,39 @@ function bookings_list() {
     $stmt->execute([$year]);
     $all = $stmt->fetchAll();
 
-    // Blind booking: before the reveal date, other users' clan/priority
-    // bookings must not expose who booked. The week still shows as taken
-    // (so blocking stays consistent with the calendar) but identity is
-    // stripped. Own bookings and admins always see full details. For clan
-    // bookings the requester's own branch stays visible so the "your branch
-    // already booked" warning keeps working.
-    $cfgStmt = $db->prepare("SELECT * FROM fargny_phase_config WHERE year = ? LIMIT 1");
-    $cfgStmt->execute([$year]);
-    $cfg = $cfgStmt->fetch();
+    // What other members may see depends on where the cycle is.
+    //
+    // While the clan window is open a clan stay is not merely anonymous,
+    // it is ABSENT: the week must not even read as taken. Showing it as
+    // blocked would tell everyone which weeks had gone and turn a blind
+    // round into first-come-first-served with the names hidden. The same
+    // applies to priority stays during their blind period.
+    //
+    // Your own booking and an admin's view are never filtered.
     $today = date('Y-m-d');
-    $clanRevealed     = $cfg ? ($today >= $cfg['clan_reveal']) : true;
-    $priorityRevealed = $cfg ? ($today >= $cfg['priority_reveal']) : true;
+    $frozen = cycle_is_frozen($year, $today);
 
-    // Clashes are part of the reveal: before it, saying two people picked
-    // the same week would leak the round. Nobody sees them early, not even
-    // the members involved.
-    $clashMap = $clanRevealed ? clan_clash_map($year) : [];
+    // Clashes are part of publication. Saying two people picked the same
+    // week while the round is still blind would give it away, so they are
+    // only computed once the clan stays are out in the open.
+    $clanVisible = !booking_is_blind('clan', $year, $today);
+    $clashMap    = $clanVisible ? clan_clash_map($year) : [];
 
-    $anonymize = function (array $b) use ($user, $clanRevealed, $priorityRevealed, $clashMap): array {
+    $isMine = function (array $b) use ($user): bool {
+        return (int)$b['user_id'] === (int)$user['id'];
+    };
+    $canSeeAll = !empty($user['is_admin']);
+
+    $visible = [];
+    foreach ($all as $b) {
+        $blind = booking_is_blind((string)$b['phase'], $year, $today);
+        if ($blind && !$canSeeAll && !$isMine($b)) continue;   // absent, not anonymous
         $fmt = format_booking($b);
         $fmt['clashes_with'] = $clashMap[(int)$b['id']] ?? [];
-        if ($user['is_admin'] || (int)$b['user_id'] === (int)$user['id']) return $fmt;
-        $hidden = ($b['phase'] === 'clan' && !$clanRevealed)
-               || ($b['phase'] === 'priority' && !$priorityRevealed);
-        if (!$hidden) return $fmt;
-        $fmt['user_id']         = 0;
-        $fmt['user_name']       = '';
-        $fmt['user_email']      = '';
-        $fmt['remarks']         = '';
-        $fmt['linked_user_ids'] = [];
-        $fmt['is_hidden']       = true;
-        $ownBranchClan = ($b['phase'] === 'clan' && (int)$b['branch_id'] === (int)$user['branch_id']);
-        if (!$ownBranchClan) {
-            $fmt['branch_id']   = 0;
-            $fmt['branch_name'] = '';
-        }
-        return $fmt;
-    };
+        $fmt['is_blind']     = $blind;     // true only for your own, or to an admin
+        $fmt['frozen']       = $frozen;
+        $visible[] = $fmt;
+    }
 
     // Also get ALL bookings for current user (across years) for My Bookings sidebar
     $stmtMy = $db->prepare("
@@ -248,8 +243,10 @@ function bookings_list() {
     };
 
     json_success([
-        'bookings'    => array_map($anonymize, $all),
-        'my_bookings' => array_map($withClash, $myAll),
+        'bookings'     => $visible,
+        'cycle_phase'  => cycle_phase($year, $today),
+        'cycle_frozen' => $frozen,
+        'my_bookings'  => array_map($withClash, $myAll),
         'weeks'       => generate_weeks($year),
     ]);
 }
@@ -287,23 +284,31 @@ function bookings_create() {
     $isAdmin = (bool)$user['is_admin'];
 
     // ---- Phase validation (admin can bypass timing) ----
-    if (!$isAdmin && $cfg) {
-        if ($phase === 'clan') {
-            if ($today < $cfg['clan_start'] || $today > $cfg['clan_end']) {
-                json_error('Clan booking phase is not currently open');
-            }
+    // The cycle, not the old phase_config columns, is the source of truth:
+    // one place decides what is open, and the emails quote the same dates.
+    $cyclePhase = cycle_phase($year, $today);
+    if (!$isAdmin) {
+        if ($phase === 'clan' && $cyclePhase !== 'clan_window') {
+            $c = cycle_dates($year);
+            json_error('Clan bookings are only open from ' . $c['clan_open']
+                     . ' to ' . $c['clan_close'] . '.');
         }
-        // Priority runs all year and is not held to the 3-month horizon:
-        // booking far ahead is the privilege it exists to give. It stays
-        // hidden until priority_reveal, and one per member per year.
-        // Regular is open all year too; its rolling horizon below is the
-        // only restriction, so neither has a phase window to check.
+        // Priority opens on its date and then never closes: after
+        // publication it can be placed any time in the year, and shows at
+        // once. Before that date it does not exist yet.
+        if ($phase === 'priority'
+            && in_array($cyclePhase, ['before_clan', 'clan_window', 'clan_conflict'], true)) {
+            $c = cycle_dates($year);
+            json_error('Priority bookings open on ' . $c['priority_open'] . '.');
+        }
+        // Regular is open all year; the rolling horizon below is its only
+        // restriction.
     }
 
-    // The clan round is blind: until the reveal date two branches may claim
+    // The clan round is blind: while the window is open two clans may claim
     // the same week without seeing each other, and the clash is settled
-    // afterwards. Nothing else may ever double-book.
-    $clanBlind = $cfg && $today < $cfg['clan_reveal'];
+    // after publication. Nothing else may ever double-book.
+    $clanBlind = ($cyclePhase === 'clan_window');
 
     // ---- Booking rules ----
     $branchId = (int)$user['branch_id'];
@@ -328,11 +333,31 @@ function bookings_create() {
         if ($stmt->fetch()) json_error('Your branch already has a clan booking this year');
     }
 
-    // Priority: max 1 per user per year
+    // Priority: max 1 per user per year.
+    //
+    // A clan booking spends the priority booking of whoever's name it is
+    // in, so the two are one entitlement between them. Blocked in both
+    // directions: taking the clan booking uses the priority, and having
+    // used the priority means somebody else in the clan has to make the
+    // clan booking. Without the second half a member could take their
+    // priority in July and the clan week in November and end up with two.
     if ($phase === 'priority') {
         $stmt = $db->prepare("SELECT id FROM fargny_bookings WHERE year = ? AND user_id = ? AND phase = 'priority' AND cancellation_status NOT IN ('approved') LIMIT 1");
         $stmt->execute([$year, $user['id']]);
         if ($stmt->fetch()) json_error('You already have a priority booking this year');
+
+        $stmt = $db->prepare("SELECT id FROM fargny_bookings WHERE year = ? AND user_id = ? AND phase = 'clan' AND cancellation_status NOT IN ('approved') LIMIT 1");
+        $stmt->execute([$year, $user['id']]);
+        if ($stmt->fetch()) {
+            json_error('The clan booking is in your name, which uses your priority booking for this year');
+        }
+    }
+    if ($phase === 'clan') {
+        $stmt = $db->prepare("SELECT id FROM fargny_bookings WHERE year = ? AND user_id = ? AND phase = 'priority' AND cancellation_status NOT IN ('approved') LIMIT 1");
+        $stmt->execute([$year, $user['id']]);
+        if ($stmt->fetch()) {
+            json_error('You have already used your priority booking this year, and the clan booking would use it too. Another shareholder of your clan can make it instead.');
+        }
     }
 
     // ---- Which nights are being reserved -------------------------------
@@ -599,9 +624,48 @@ function bookings_update(string $idStr) {
             json_error('That stay is in the past — bookings can only start from today');
         }
 
+        $ph     = $booking['phase'] ?? 'regular';
+        $byr    = (int)$booking['year'];
+        $inClash = false;
+        if ($ph === 'clan') {
+            $cm = clan_clash_map($byr);
+            $inClash = !empty($cm[(int)$booking['id']]);
+        }
+
+        // During a conflict period the calendar is frozen. Only a booking
+        // that actually overlaps another may move, so nobody reshuffles
+        // quietly while the clashes are being settled.
+        if (!$user['is_admin'] && cycle_is_frozen($byr)) {
+            if (!$inClash) {
+                json_error('Only bookings that overlap another can be changed at the moment. '
+                         . 'The calendar is settled once the conflicts are resolved.');
+            }
+        }
+
+        // A clan or priority stay normally moves only WITHIN the week it
+        // was booked in, and never grows past seven nights. Shortening is
+        // always allowed. A booking in conflict is the exception: it may
+        // go to any free dates, because the whole point is to get out of
+        // somebody else's way.
+        if (!$user['is_admin'] && ($ph === 'clan' || $ph === 'priority') && !$inClash) {
+            $homeWeek = null;
+            foreach (generate_weeks($byr) as $w) {
+                if ($w['id'] === $booking['week_id']) { $homeWeek = $w; break; }
+            }
+            if ($homeWeek) {
+                $weekFirst = $homeWeek['start'];
+                $weekLast  = date_plus_days($homeWeek['end'], 1);   // departure day
+                if ($newIn < $weekFirst || $newOut > $weekLast) {
+                    json_error('A clan or priority stay can only be moved within the week it was '
+                             . 'booked in (' . $weekFirst . ' to ' . $weekLast . ').');
+                }
+            }
+            $nights = (int)((strtotime($newOut) - strtotime($newIn)) / 86400);
+            if ($nights > 7) json_error('A stay can never be longer than seven nights');
+        }
+
         // Clan and priority stay one of the three shapes when they move.
         // An admin is the escape hatch and is not held to it.
-        $ph = $booking['phase'] ?? 'regular';
         if (!$user['is_admin'] && ($ph === 'clan' || $ph === 'priority')) {
             $wkNew = week_id_for_date($newIn);
             $weekRow = null;
@@ -758,14 +822,7 @@ function bookings_calendar() {
     $year = (int)($_GET['year'] ?? date('Y'));
     $db = get_db();
 
-    // Get phase config for reveal logic
-    $stmt = $db->prepare("SELECT * FROM fargny_phase_config WHERE year = ? LIMIT 1");
-    $stmt->execute([$year]);
-    $cfg = $stmt->fetch();
-
     $today = date('Y-m-d');
-    $clanRevealed = $cfg ? ($today >= $cfg['clan_reveal']) : true;
-    $priorityRevealed = $cfg ? ($today >= $cfg['priority_reveal']) : true;
 
     $stmt = $db->prepare("
         SELECT b.*, u.display_name, u.email, br.name AS branch_name,
@@ -793,48 +850,26 @@ function bookings_calendar() {
             continue;
         }
         // Regular phase always visible
-        if ($b['phase'] === 'regular') {
-            $visible[] = format_booking($b);
+        // A blind stay is left out of the calendar entirely for everyone
+        // but its owner and an admin. Showing it as an anonymous block
+        // would still tell the family which weeks had gone, which is the
+        // one thing a blind round must not do. Same rule as the booking
+        // tab, so the two always agree.
+        if (booking_is_blind((string)$b['phase'], $year, $today)
+            && empty($user['is_admin'])
+            && (int)$b['user_id'] !== (int)$user['id']) {
             continue;
         }
-        // Clan: fully visible after reveal; anonymised before reveal so the
-        // calendar and booking tab agree that the week is taken.
-        if ($b['phase'] === 'clan') {
-            if ($clanRevealed) {
-                $visible[] = format_booking($b);
-            } else {
-                $anon = format_booking($b);
-                $anon['user_name']   = '';
-                $anon['user_email']  = '';
-                $anon['branch_id']   = 0;
-                $anon['branch_name'] = '';
-                $anon['is_hidden']   = true;
-                $visible[] = $anon;
-            }
-            continue;
-        }
-        // Priority: same reveal logic
-        if ($b['phase'] === 'priority') {
-            if ($priorityRevealed) {
-                $visible[] = format_booking($b);
-            } else {
-                $anon = format_booking($b);
-                $anon['user_name']   = '';
-                $anon['user_email']  = '';
-                $anon['branch_id']   = 0;
-                $anon['branch_name'] = '';
-                $anon['is_hidden']   = true;
-                $visible[] = $anon;
-            }
-            continue;
-        }
+        $visible[] = format_booking($b);
     }
 
     json_success([
-        'bookings'           => $visible,
-        'weeks'              => generate_weeks($year),
-        'clan_revealed'      => $clanRevealed,
-        'priority_revealed'  => $priorityRevealed,
+        'bookings'      => $visible,
+        'weeks'         => generate_weeks($year),
+        'cycle_phase'   => cycle_phase($year, $today),
+        'cycle_frozen'  => cycle_is_frozen($year, $today),
+        'clan_blind'    => booking_is_blind('clan', $year, $today),
+        'priority_blind'=> booking_is_blind('priority', $year, $today),
     ]);
 }
 
@@ -844,13 +879,7 @@ function bookings_public_calendar() {
     $year = (int)($_GET['year'] ?? date('Y'));
     $db = get_db();
 
-    $stmt = $db->prepare("SELECT * FROM fargny_phase_config WHERE year = ? LIMIT 1");
-    $stmt->execute([$year]);
-    $cfg = $stmt->fetch();
-
     $today = date('Y-m-d');
-    $clanRevealed = $cfg ? ($today >= $cfg['clan_reveal']) : true;
-    $priorityRevealed = $cfg ? ($today >= $cfg['priority_reveal']) : true;
 
     $stmt = $db->prepare("
         SELECT b.*, u.display_name, u.email, br.name AS branch_name
@@ -872,15 +901,12 @@ function bookings_public_calendar() {
         return $fmt;
     };
 
+    // Nobody is signed in here, so there is no owner exception: a blind
+    // stay is simply absent from the public calendar until it is published.
     $visible = [];
     foreach ($all as $b) {
-        if ($b['phase'] === 'regular') {
-            $visible[] = $public($b);
-        } elseif ($b['phase'] === 'clan' && $clanRevealed) {
-            $visible[] = $public($b);
-        } elseif ($b['phase'] === 'priority' && $priorityRevealed) {
-            $visible[] = $public($b);
-        }
+        if (booking_is_blind((string)$b['phase'], $year, $today)) continue;
+        $visible[] = $public($b);
     }
 
     // Also include board events

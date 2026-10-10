@@ -506,6 +506,53 @@ function ensure_phase_config_columns() {
     }
 }
 
+// ---- Where in the cycle we are ----------------------------------------
+// One function the whole app asks, rather than each place re-deriving the
+// rules from a pile of date comparisons.
+//
+//   before_clan     nothing open yet for this season
+//   clan_window     15-29 Nov. Clan bookings accepted and BLIND: a clan
+//                   stay is visible to the person who made it and to
+//                   admins, and to nobody else. Not even as "taken" --
+//                   showing the week as blocked would give the round away
+//                   and defeat the point of bidding unseen.
+//   clan_conflict   30 Nov - 9 Dec. Clan bookings published, overlaps
+//                   flagged. Frozen: only a booking in conflict may change.
+//   priority_blind  10 Dec - 31 Dec. Clan calendar final. Priority
+//                   bookings accepted and blind.
+//   priority_conflict  January. Everything published, overlaps flagged,
+//                   frozen the same way.
+//   open            the rest of the year. Priority still placeable, and
+//                   visible at once.
+function cycle_phase(int $bookingYear, ?string $today = null): string {
+    $t  = $today ?: date('Y-m-d');
+    $c  = cycle_dates($bookingYear);
+    if ($t <  $c['clan_open'])             return 'before_clan';
+    if ($t <= $c['clan_close'])            return 'clan_window';
+    if ($t <= $c['clan_conflict_end'])     return 'clan_conflict';
+    if ($t <  $c['priority_publish'])      return 'priority_blind';
+    if ($t <= $c['priority_conflict_end']) return 'priority_conflict';
+    return 'open';
+}
+
+// Is a stay of this phase hidden from everyone but its owner and admins?
+// Clan stays are blind only while the clan window is open; once published
+// they stay visible for good. Priority stays are blind until publication.
+function booking_is_blind(string $bookingPhase, int $bookingYear, ?string $today = null): bool {
+    $p = cycle_phase($bookingYear, $today);
+    if ($bookingPhase === 'clan')     return $p === 'clan_window';
+    if ($bookingPhase === 'priority') return in_array($p, ['priority_blind'], true);
+    return false;
+}
+
+// During a conflict period the calendar is frozen: only a booking that
+// actually overlaps another may be edited, so nobody quietly reshuffles
+// while the clashes are being settled.
+function cycle_is_frozen(int $bookingYear, ?string $today = null): bool {
+    return in_array(cycle_phase($bookingYear, $today),
+                    ['clan_conflict', 'priority_conflict'], true);
+}
+
 // ---- Settings (generic key/value) --------------------------------------
 // Lives here rather than in gate.php because everything uses it now: the
 // registration gate, the notification markers, the dry-run switch. A file
