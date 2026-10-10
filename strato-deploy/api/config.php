@@ -435,6 +435,77 @@ function format_booking_number($year, $seq): ?string {
     return sprintf('%02d-%d', ((int)$year) % 100, (int)$seq);
 }
 
+// ---- The annual booking cycle ------------------------------------------
+// Every date below belongs to the season being booked. For booking year Y
+// the clan window runs in November of Y-1; publication lands on 1 January
+// of Y. The month/day of each boundary is configurable and recurs yearly,
+// so a year row can be regenerated rather than typed in by hand.
+//
+// All times are Europe/Paris (pinned at the top of this file).
+function cycle_boundaries(): array {
+    return [
+        // key                default    what it means
+        'clan_open'        => '11-15',   // clan window opens (year Y-1)
+        'clan_close'       => '11-29',   // clan window shuts, 23:59
+        'clan_publish'     => '11-30',   // clan bookings become visible
+        'clan_conflict_end'=> '12-09',   // clan conflicts resolved by 23:59
+        'priority_open'    => '12-10',   // priority opens, blind
+        'priority_publish' => '01-01',   // everything becomes visible (year Y)
+        'priority_conflict_end' => '01-31',
+        'committee_open'   => '02-01',
+        'kickoff'          => '10-20',   // the announcement email (year Y-1)
+    ];
+}
+
+// Which calendar year a boundary falls in, relative to the booking year.
+// Everything from the kickoff to the priority opening happens the autumn
+// before; publication onwards happens in the booking year itself.
+function cycle_boundary_year(string $key, int $bookingYear): int {
+    $previousAutumn = ['kickoff', 'clan_open', 'clan_close', 'clan_publish',
+                       'clan_conflict_end', 'priority_open'];
+    return in_array($key, $previousAutumn, true) ? $bookingYear - 1 : $bookingYear;
+}
+
+// Resolved YYYY-MM-DD for one boundary of one booking year. An admin can
+// override any month/day through settings (cycle_<key> = 'MM-DD') without
+// touching code; an override that is not MM-DD is ignored rather than
+// allowed to produce a nonsense date.
+function cycle_date(string $key, int $bookingYear): ?string {
+    $defaults = cycle_boundaries();
+    if (!isset($defaults[$key])) return null;
+    $md = setting_get('cycle_' . $key, $defaults[$key]);
+    if (!preg_match('/^\d{2}-\d{2}$/', $md)) $md = $defaults[$key];
+    return cycle_boundary_year($key, $bookingYear) . '-' . $md;
+}
+
+// Every boundary for a booking year, resolved.
+function cycle_dates(int $bookingYear): array {
+    $out = [];
+    foreach (array_keys(cycle_boundaries()) as $k) $out[$k] = cycle_date($k, $bookingYear);
+    return $out;
+}
+
+// The columns phase_config gained when the cycle grew a conflict period
+// and a committee phase. Added at runtime like every other migration here.
+function ensure_phase_config_columns() {
+    static $done = false;
+    if ($done) return;
+    $done = true;
+    $db = get_db();
+    $columns = [
+        'clan_publish'          => "DATE DEFAULT NULL",
+        'clan_conflict_end'     => "DATE DEFAULT NULL",
+        'priority_conflict_end' => "DATE DEFAULT NULL",
+        'committee_start'       => "DATE DEFAULT NULL",
+    ];
+    foreach ($columns as $name => $ddl) {
+        try {
+            $has = $db->query("SHOW COLUMNS FROM fargny_phase_config LIKE '$name'")->fetch();
+            if (!$has) $db->exec("ALTER TABLE fargny_phase_config ADD COLUMN `$name` $ddl");
+        } catch (Exception $e) { /* readers fall back to cycle_date() */ }
+    }
+}
+
 // ---- Settings (generic key/value) --------------------------------------
 // Lives here rather than in gate.php because everything uses it now: the
 // registration gate, the notification markers, the dry-run switch. A file
