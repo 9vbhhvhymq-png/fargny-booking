@@ -21,14 +21,7 @@ function ensure_gate_tables() {
     if ($done) return;
     $done = true;
     $db = get_db();
-    $db->exec("
-        CREATE TABLE IF NOT EXISTS `fargny_settings` (
-          `name`       VARCHAR(64) NOT NULL,
-          `value`      TEXT,
-          `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          PRIMARY KEY (`name`)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-    ");
+    ensure_settings_table();   // defined in config.php
     $db->exec("
         CREATE TABLE IF NOT EXISTS `fargny_gate_tokens` (
           `token`      CHAR(64) NOT NULL,
@@ -49,22 +42,7 @@ function ensure_gate_tables() {
     ");
 }
 
-function setting_get(string $name, string $default = ''): string {
-    ensure_gate_tables();
-    $stmt = get_db()->prepare("SELECT value FROM fargny_settings WHERE name = ? LIMIT 1");
-    $stmt->execute([$name]);
-    $row = $stmt->fetch();
-    if (!$row || $row['value'] === null || $row['value'] === '') return $default;
-    return (string)$row['value'];
-}
 
-function setting_set(string $name, string $value) {
-    ensure_gate_tables();
-    get_db()->prepare("
-        INSERT INTO fargny_settings (name, value, updated_at) VALUES (?, ?, NOW())
-        ON DUPLICATE KEY UPDATE value = VALUES(value), updated_at = NOW()
-    ")->execute([$name, $value]);
-}
 
 // The question the family already knows the answer to. Editable from the
 // admin panel; these are only the starting values.

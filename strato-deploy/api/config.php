@@ -34,6 +34,11 @@ register_shutdown_function(function () {
     }
 });
 
+// The house is in France and every rule in this app is written in local
+// terms — a window that closes at 23:59, a day that counts as "today".
+// Pin the zone so a server move cannot shift a deadline by an hour.
+date_default_timezone_set('Europe/Paris');
+
 // Load .env from parent directory (not web-accessible)
 function load_env() {
     $envFile = __DIR__ . '/../.env';
@@ -430,6 +435,47 @@ function format_booking_number($year, $seq): ?string {
     return sprintf('%02d-%d', ((int)$year) % 100, (int)$seq);
 }
 
+// ---- Settings (generic key/value) --------------------------------------
+// Lives here rather than in gate.php because everything uses it now: the
+// registration gate, the notification markers, the dry-run switch. A file
+// that only requires config.php must still be able to read a setting.
+function ensure_settings_table() {
+    static $done = false;
+    if ($done) return;
+    $done = true;
+    try {
+        get_db()->exec("
+            CREATE TABLE IF NOT EXISTS `fargny_settings` (
+              `name`       VARCHAR(64) NOT NULL,
+              `value`      TEXT,
+              `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              PRIMARY KEY (`name`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        ");
+    } catch (Exception $e) { /* readers fall back to their default */ }
+}
+
+function setting_get(string $name, string $default = ''): string {
+    ensure_settings_table();
+    try {
+        $stmt = get_db()->prepare("SELECT value FROM fargny_settings WHERE name = ? LIMIT 1");
+        $stmt->execute([$name]);
+        $row = $stmt->fetch();
+    } catch (Exception $e) { return $default; }
+    if (!$row || $row['value'] === null || $row['value'] === '') return $default;
+    return (string)$row['value'];
+}
+
+function setting_set(string $name, string $value) {
+    ensure_settings_table();
+    try {
+        get_db()->prepare("
+            INSERT INTO fargny_settings (name, value, updated_at) VALUES (?, ?, NOW())
+            ON DUPLICATE KEY UPDATE value = VALUES(value), updated_at = NOW()
+        ")->execute([$name, $value]);
+    } catch (Exception $e) {}
+}
+
 // ---- Released priority bookings ----------------------------------------
 // A priority booking may be given up and used again on other dates, but
 // the dates it held do not simply come back to that member as an ordinary
@@ -580,4 +626,13 @@ function seed_admin_if_needed() {
 
 // Try to seed admin (silently ignore if tables don't exist yet)
 try { seed_admin_if_needed(); } catch (Exception $e) {}
-try { backfill_week_dates(); } catch (Exception $e) {}
+
+// backfill_week_dates() is deliberately NOT called here any more.
+//
+// It was a one-off migration that never stopped: it ran on EVERY request
+// and rewrote any booking with empty dates using the OLD Saturday week
+// grid, so clan, priority and admin-made bookings were being stored a day
+// off. Every booking now stores explicit dates at creation, so there is
+// nothing left for it to fix and every run was a chance to corrupt more.
+// The function is kept below so an admin can run it deliberately against
+// a known set of rows, and admin/empty-dates lists what it would touch.

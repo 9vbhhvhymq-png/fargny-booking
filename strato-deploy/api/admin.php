@@ -37,6 +37,14 @@ function handle_admin(string $action, string $id, string $method) {
             if ($method !== 'POST' && $method !== 'DELETE') json_error('POST or DELETE required', 405);
             admin_delete_booking($id);
             break;
+        case 'empty-dates':
+            if ($method !== 'GET') json_error('GET required', 405);
+            admin_empty_dates();
+            break;
+        case 'no-email':
+            if ($method !== 'GET') json_error('GET required', 405);
+            admin_members_without_email();
+            break;
         case 'gate':
             if ($method === 'GET') gate_admin_get();
             elseif ($method === 'POST' || $method === 'PUT') gate_admin_save();
@@ -98,6 +106,77 @@ function admin_book() {
     } catch (Exception $e) {}
 
     json_success(['booking_id' => $bookingId, 'booking_number' => format_booking_number($year, $seq)], 201);
+}
+
+// Bookings stored without explicit dates. These are the only rows the old
+// backfill would have touched, and the only ones whose real dates are
+// guesswork: the app falls back to "the whole week" when it displays them.
+// Read-only on purpose — deciding what each one should be is a human job.
+function admin_empty_dates() {
+    require_admin();
+    $db = get_db();
+    $rows = $db->query("
+        SELECT b.id, b.booking_seq, b.week_id, b.year, b.phase,
+               b.check_in_date, b.check_out_date, b.booked_at,
+               u.display_name, u.email, br.name AS branch_name
+        FROM fargny_bookings b
+        JOIN fargny_users u  ON u.id  = b.user_id
+        JOIN fargny_branches br ON br.id = b.branch_id
+        WHERE (b.check_in_date IS NULL OR b.check_out_date IS NULL)
+          AND b.cancellation_status NOT IN ('approved')
+        ORDER BY b.year, b.week_id
+    ")->fetchAll();
+
+    // Show what the week grid says now (Friday) against what the old
+    // migration would have written (Saturday), so the difference is visible.
+    $out = [];
+    foreach ($rows as $r) {
+        $y = (int)$r['year'];
+        $friday = null; $saturday = null;
+        foreach (generate_weeks($y) as $w) {
+            if ($w['id'] === $r['week_id']) { $friday = $w; break; }
+        }
+        foreach (generate_weeks_saturday($y) as $w) {
+            if ($w['id'] === $r['week_id']) { $saturday = $w; break; }
+        }
+        $out[] = [
+            'id'              => (int)$r['id'],
+            'booking_number'  => format_booking_number($r['year'], $r['booking_seq']),
+            'member'          => $r['display_name'],
+            'branch'          => $r['branch_name'],
+            'phase'           => $r['phase'],
+            'week_id'         => $r['week_id'],
+            'booked_at'       => $r['booked_at'],
+            'stored_check_in' => $r['check_in_date'],
+            'stored_check_out'=> $r['check_out_date'],
+            'friday_grid'     => $friday   ? ($friday['start']   . ' .. ' . $friday['end'])   : null,
+            'saturday_grid'   => $saturday ? ($saturday['start'] . ' .. ' . $saturday['end']) : null,
+        ];
+    }
+    json_success(['count' => count($out), 'bookings' => $out]);
+}
+
+// People on the shareholder roster who have never registered an account.
+// fargny_users.email is NOT NULL, so a registered member always has an
+// address; the ones who hear nothing are those with no account at all.
+function admin_members_without_email() {
+    require_admin();
+    $db = get_db();
+    $rows = $db->query("
+        SELECT s.id, s.full_name, br.name AS branch_name
+        FROM fargny_shareholders s
+        JOIN fargny_branches br ON br.id = s.branch_id
+        WHERE s.user_id IS NULL
+        ORDER BY br.name, s.full_name
+    ")->fetchAll();
+    json_success([
+        'count'   => count($rows),
+        'members' => array_map(function ($r) {
+            return ['shareholder_id' => (int)$r['id'],
+                    'full_name'      => $r['full_name'],
+                    'branch'         => $r['branch_name']];
+        }, $rows),
+    ]);
 }
 
 function admin_parse_email() {

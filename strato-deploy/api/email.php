@@ -10,15 +10,115 @@ if (!defined('ADMIN_CONTACT_EMAIL')) {
     define('ADMIN_CONTACT_EMAIL', env('ADMIN_EMAIL', 'moritz@fromageot.eu'));
 }
 
+// Send one message. Returns ['ok'=>bool, 'error'=>string, 'transport'=>string]
+// so the notification log can record what actually happened — PHP's mail()
+// tells you nothing, which is no basis for mailing the whole family.
+//
+// SMTP is used when SMTP_HOST is set; otherwise this falls back to mail()
+// so existing one-off messages keep working on a server with no SMTP set up.
+function send_email_result(string $to, string $subject, string $body): array {
+    $from     = env('MAIL_FROM', 'noreply@fargny.org');
+    $fromName = env('MAIL_FROM_NAME', 'Fargny Booking');
+
+    // A global switch: compose and log everything, put nothing on the wire.
+    if (mail_dry_run()) {
+        return ['ok' => true, 'error' => '', 'transport' => 'dry-run'];
+    }
+
+    $host = (string)env('SMTP_HOST', '');
+    if ($host === '') {
+        $headers = [
+            "From: $fromName <$from>",
+            "Reply-To: $from",
+            "MIME-Version: 1.0",
+            "Content-Type: text/html; charset=UTF-8",
+            "X-Mailer: Fargny-Booking/1.0",
+        ];
+        $ok = @mail($to, $subject, $body, implode("\r\n", $headers));
+        return ['ok' => (bool)$ok, 'error' => $ok ? '' : 'mail() returned false',
+                'transport' => 'mail()'];
+    }
+
+    require_once __DIR__ . '/lib/PHPMailer/Exception.php';
+    require_once __DIR__ . '/lib/PHPMailer/PHPMailer.php';
+    require_once __DIR__ . '/lib/PHPMailer/SMTP.php';
+
+    $m = new \PHPMailer\PHPMailer\PHPMailer(true);
+    try {
+        $m->isSMTP();
+        $m->Host       = $host;
+        $m->Port       = (int)env('SMTP_PORT', 587);
+        $m->SMTPAuth   = true;
+        $m->Username   = (string)env('SMTP_USER', $from);
+        $m->Password   = (string)env('SMTP_PASS', '');
+        // 'tls' (STARTTLS, the Strato default), 'ssl', or 'none' for a
+        // plain relay. Anything unrecognised is treated as STARTTLS: the
+        // safe reading of a typo is "encrypt it".
+        $secure = strtolower((string)env('SMTP_SECURE', 'tls'));
+        if ($secure === 'none') {
+            $m->SMTPSecure  = '';
+            $m->SMTPAutoTLS = false;
+            $m->SMTPAuth    = (string)env('SMTP_USER', '') !== '';
+        } else {
+            $m->SMTPSecure = $secure === 'ssl'
+                ? \PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_SMTPS
+                : \PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS;
+        }
+        $m->Timeout    = 20;
+        $m->CharSet    = 'UTF-8';
+
+        $m->setFrom($from, $fromName);
+        $m->addAddress($to);
+        $reply = (string)env('MAIL_REPLY_TO', '');
+        if ($reply !== '') $m->addReplyTo($reply);
+        $m->isHTML(true);
+        $m->Subject = $subject;
+        $m->Body    = $body;
+        $m->AltBody = trim(html_entity_decode(strip_tags($body), ENT_QUOTES, 'UTF-8'));
+        $m->send();
+        return ['ok' => true, 'error' => '', 'transport' => 'smtp'];
+    } catch (\Throwable $e) {
+        $err = $m->ErrorInfo ?: $e->getMessage();
+        return ['ok' => false, 'error' => substr($err, 0, 500), 'transport' => 'smtp'];
+    }
+}
+
+// Backwards-compatible wrapper: every existing caller keeps working.
 function send_email(string $to, string $subject, string $body) {
-    $from = env('MAIL_FROM', 'noreply@fargny.org');
-    $headers = [
-        "From: Fargny Booking <$from>",
-        "Reply-To: $from",
-        "Content-Type: text/html; charset=UTF-8",
-        "X-Mailer: Fargny-Booking/1.0",
-    ];
-    @mail($to, $subject, $body, implode("\r\n", $headers));
+    send_email_result($to, $subject, $body);
+}
+
+// Global dry run, flipped from the admin page. Nothing leaves the server
+// while it is on, but every send is still composed and logged.
+//
+// Fails CLOSED: if the switch cannot be read, assume it is on and send
+// nothing. An unsent mail is a nuisance; a broadcast to the whole family
+// that should have been held back cannot be taken back.
+function mail_dry_run(): bool {
+    static $v = null;
+    if ($v !== null) return $v;
+    try {
+        $stmt = get_db()->prepare("SELECT value FROM fargny_settings WHERE name = 'mail_dry_run' LIMIT 1");
+        $stmt->execute();
+        $row = $stmt->fetch();
+        $v = $row && (string)$row['value'] === '1';
+    } catch (Exception $e) {
+        // No settings table yet is the normal first-deploy state, not a
+        // fault: only treat a genuine connection failure as "hold".
+        $v = !settings_table_reachable();
+    }
+    return $v;
+}
+
+// True when the settings table exists and can be queried.
+function settings_table_reachable(): bool {
+    try {
+        ensure_settings_table();
+        get_db()->query("SELECT 1 FROM fargny_settings LIMIT 1");
+        return true;
+    } catch (Exception $e) {
+        return false;
+    }
 }
 
 function email_template(string $title, string $content): string {
