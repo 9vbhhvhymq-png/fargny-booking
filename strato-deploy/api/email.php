@@ -154,10 +154,13 @@ function email_template(string $title, string $content): string {
     return '<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="font-family:\'Segoe UI\',Arial,sans-serif;background:#F5F0EB;padding:20px;">
     <div style="max-width:600px;margin:0 auto;background:white;border-radius:12px;padding:32px;box-shadow:0 2px 12px rgba(0,0,0,0.06);">
     <h1 style="font-family:Georgia,serif;color:#2C1810;font-size:24px;margin:0 0 8px 0;">Fargny</h1>
-    <h2 style="color:#8B7D6B;font-size:14px;font-weight:normal;margin:0 0 24px 0;">' . htmlspecialchars($title) . '</h2>
+    ' . ($title === '' ? '<div style="margin-bottom:16px;"></div>'
+        : '<h2 style="color:#8B7D6B;font-size:14px;font-weight:normal;margin:0 0 24px 0;">'
+          . htmlspecialchars($title) . '</h2>') . '
     ' . $content . '
     <hr style="border:none;border-top:1px solid #E0D8CF;margin:24px 0 16px 0;">
-    <p style="font-size:12px;color:#8B7D6B;">This is an automated message from the Fargny Holiday House Booking System.</p>
+    <p style="font-size:12px;color:#8B7D6B;">Automatisch bericht van het Fargny boekingssysteem.<br>
+    This is an automated message from the Fargny booking system.</p>
     </div></body></html>';
 }
 
