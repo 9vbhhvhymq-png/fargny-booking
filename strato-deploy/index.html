@@ -333,9 +333,11 @@ function getPhaseStatus(phaseId, cfg){
     return 'closed';
   }
   if(phaseId==='priority'){
+    // Priority opens on its date and then never closes. 10-31 December is
+    // only the blind period, not a window: after publication an unused
+    // priority booking can still be placed at any point in the year.
     if(today<cfg.priority_start) return 'upcoming';
-    if(today<=cfg.priority_end) return 'active';
-    return 'closed';
+    return 'active';
   }
   if(phaseId==='board') return 'active';
   // Regular booking runs all year round; the rolling horizon below is the
@@ -345,9 +347,23 @@ function getPhaseStatus(phaseId, cfg){
 function getPhaseWindow(phaseId, cfg, lang){
   if(!cfg) return '';
   if(phaseId==='clan') return formatDate(cfg.clan_start,lang)+' \u2013 '+formatDate(cfg.clan_end,lang);
-  if(phaseId==='priority') return formatDate(cfg.priority_start,lang)+' \u2013 '+formatDate(cfg.priority_end,lang);
+  if(phaseId==='priority'){
+    // No end date to show: it opens and stays open.
+    return (lang==='nl' ? 'Vanaf '+formatDate(cfg.priority_start,lang)+', daarna het hele jaar'
+                        : 'From '+formatDate(cfg.priority_start,lang)+', then all year');
+  }
   if(phaseId==='board') return '';
   return (lang==='nl'?'Hele jaar open, 3 maanden vooruit':'All year round, 3 months ahead');
+}
+
+// Each kind of booking gets its own colour on the calendar. The clan
+// colour is carried as a thin edge marker instead, so a bar still says
+// which clan at a glance without losing what kind of booking it is.
+const TYPE_COLORS = { clan:'#7B5EA7', priority:'#C4853B', regular:'#4A7C59',
+                      committee:'#2E7D8F', board:'#B85042' };
+function bookingTypeColor(b){
+  if(!b) return TYPE_COLORS.regular;
+  return TYPE_COLORS[b.phase] || TYPE_COLORS.regular;
 }
 function calcBookingCost(guests, weekStart, includeCleaning=true){
   const cleaning = includeCleaning ? CLEANING_FEE : 0;
@@ -1928,13 +1944,34 @@ function CalendarView({bookings=[], weeks, year, boardEvents=[], gcalEvents=[], 
   while(cells.length%7!==0) cells.push(null);
 
   const calWeeks = calYear===year ? weeks : generateWeeks(calYear);
-  const allItems = bookings.map(b=>{const w=calWeeks.find(wk=>wk.id===b.week_id);return{type:'booking',data:b,start:b.check_in_date||(w?w.start:''),end:b.check_out_date||(w?w.end:'')};});
+  // The grid paints start..end INCLUSIVE, so `end` must be the last
+  // NIGHT, not the departure day. check_out_date is the departure date —
+  // the day the house is free again — so the last night is the day
+  // before. Painting the departure day made every stay look a day longer
+  // than it is and put two bookings in the changeover cell, where only
+  // one of the two names could be shown.
+  // A booking with no dates still occupies its whole week, and w.end is
+  // already the last night, so that branch needs no adjustment.
+  const allItems = bookings.map(b=>{
+    const w = calWeeks.find(wk=>wk.id===b.week_id);
+    const start = b.check_in_date || (w?w.start:'');
+    const end   = b.check_out_date ? addDaysISO(b.check_out_date,-1) : (w?w.end:'');
+    return {type:'booking',data:b,start,end};
+  });
   (boardEvents||[]).forEach(ev=>{allItems.push({type:'board',data:ev,start:ev.start_date,end:ev.end_date});});
   // Merge in Google Calendar events that are NOT already app bookings —
   // read-only, shown in grey. A stay booked here that also lives in the
   // shared calendar is shown once, as the app booking it is.
+  // Same convention for the old calendar: a multi-day entry names the
+  // departure date, a single-day entry occupies that one day. Mirrors
+  // gcal_night_range() on the server.
   legacyGcalOnly(gcalEvents, bookings, b=>calWeeks.find(wk=>wk.id===b.week_id))
-    .forEach((ev,idx)=>{allItems.push({type:'gcal',data:{...ev,_key:ev.uid||('gcal_'+idx)},start:ev.start_date,end:ev.end_date});});
+    .forEach((ev,idx)=>{
+      const st = ev.start_date;
+      const raw = ev.end_date || st;
+      const end = (raw > st) ? addDaysISO(raw,-1) : st;
+      allItems.push({type:'gcal',data:{...ev,_key:ev.uid||('gcal_'+idx)},start:st,end});
+    });
 
   const dayBookings = {};
   for(let dd=1;dd<=daysInMonth;dd++){
@@ -1975,15 +2012,39 @@ function CalendarView({bookings=[], weeks, year, boardEvents=[], gcalEvents=[], 
                   let barColor, label, isPending=false;
                   if(isBoard){barColor=COLORS.board;label=b.name;}
                   else if(isGcal){barColor=COLORS.gcal;label=b.title;}
-                  else{const br=FAMILY_BRANCHES.find(x=>x.id===b.branch_id);isPending=b.cancellation_status==='pending';if(b.is_hidden){barColor='#A89888';label='\u{1F512}';}else{barColor=b.open_to_share?COLORS.openToShare:isPending?(br?br.color:'#ccc')+'40':(br?br.color:'#ccc');label=shortName(b.user_name)+(b.open_to_share?' \u{1F91D}':'');}}
+                  // Colour says what KIND of booking it is; the clan is
+                  // carried as a thin edge marker so both read at once.
+                  let edgeColor=null;
+                  if(isBoard){barColor=COLORS.board;label=b.name;}
+                  else if(isGcal){barColor=COLORS.gcal;label=b.title;}
+                  else{
+                    const br=FAMILY_BRANCHES.find(x=>x.id===b.branch_id);
+                    isPending=b.cancellation_status==='pending';
+                    if(b.is_hidden){barColor='#A89888';label='\u{1F512}';}
+                    else{
+                      barColor=bookingTypeColor(b);
+                      edgeColor=br?br.color:null;
+                      label=shortName(b.user_name)+(b.open_to_share?' \u{1F91D}':'');
+                    }
+                  }
                   const prevDay=ci>0?row[ci-1]:null;const nextDay=ci<6?row[ci+1]:null;
                   const keyFor = x=>x.type==='board'?'board_'+x.data.id:x.type==='gcal'?('gcal_'+(x.data._key||x.data.uid||x.data.title+x.start)):x.data.id;
                   const itemId = keyFor(item);
                   const prevHas=prevDay&&(dayBookings[prevDay]||[]).some(x=>keyFor(x)===itemId);
                   const nextHas=nextDay&&(dayBookings[nextDay]||[]).some(x=>keyFor(x)===itemId);
                   const radius=(!prevHas?'4px ':'0 ')+(!nextHas?'4px ':'0 ')+(!nextHas?'4px ':'0 ')+(!prevHas?'4px':'0');
-                  return <div key={itemId+'_'+bi} onClick={e=>{e.stopPropagation();setPopup(item);}} style={{height:16,marginBottom:1,background:barColor+'CC',borderRadius:radius,cursor:'pointer',display:'flex',alignItems:'center',overflow:'hidden',paddingLeft:!prevHas?3:0}}>
-                    {!prevHas && <span style={{fontSize:8,fontWeight:700,color:'white',whiteSpace:'nowrap',textOverflow:'ellipsis',overflow:'hidden',textDecoration:isPending?'line-through':'none'}}>{label}</span>}
+                  // The name is repeated at the start of each week-row
+                  // segment, not only on the very first day, so a stay
+                  // that wraps is still identifiable further down the
+                  // grid — and so a changeover is readable on both sides.
+                  const showLabel = !prevHas || ci===0;
+                  return <div key={itemId+'_'+bi} onClick={e=>{e.stopPropagation();setPopup(item);}}
+                    title={label}
+                    style={{height:16,marginBottom:1,background:barColor+'CC',borderRadius:radius,
+                            cursor:'pointer',display:'flex',alignItems:'center',overflow:'hidden',
+                            paddingLeft:showLabel?3:0,
+                            borderLeft:edgeColor&&!prevHas?('3px solid '+edgeColor):undefined}}>
+                    {showLabel && <span style={{fontSize:8,fontWeight:700,color:'white',whiteSpace:'nowrap',textOverflow:'ellipsis',overflow:'hidden',textDecoration:isPending?'line-through':'none'}}>{label}</span>}
                   </div>;
                 })}
               </div>;

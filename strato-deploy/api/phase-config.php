@@ -15,35 +15,30 @@ function handle_phase_config(string $action, string $method) {
 
 function phase_config_get() {
     $year = (int)($_GET['year'] ?? date('Y'));
-    $db = get_db();
-    $stmt = $db->prepare("SELECT * FROM fargny_phase_config WHERE year = ? LIMIT 1");
-    $stmt->execute([$year]);
-    $cfg = $stmt->fetch();
 
-    if (!$cfg) {
-        // Return defaults
-        json_success([
-            'year'           => $year,
-            'clan_start'     => ($year - 1) . '-11-01',
-            'clan_end'       => ($year - 1) . '-12-15',
-            'clan_reveal'    => ($year - 1) . '-12-15',
-            'priority_start' => ($year - 1) . '-12-15',
-            'priority_end'   => ($year - 1) . '-12-31',
-            'priority_reveal'=> ($year - 1) . '-12-31',
-            'regular_start'  => $year . '-01-01',
-        ]);
-        return;
-    }
+    // The cycle is the source of truth. A stored phase_config row is still
+    // returned for anything that reads the old field names, but the dates
+    // come from cycle_dates() so the tiles, the rules and the emails can
+    // never quote different days.
+    $c = cycle_dates($year);
 
     json_success([
-        'year'            => (int)$cfg['year'],
-        'clan_start'      => $cfg['clan_start'],
-        'clan_end'        => $cfg['clan_end'],
-        'clan_reveal'     => $cfg['clan_reveal'],
-        'priority_start'  => $cfg['priority_start'],
-        'priority_end'    => $cfg['priority_end'],
-        'priority_reveal' => $cfg['priority_reveal'],
-        'regular_start'   => $cfg['regular_start'],
+        'year'            => $year,
+        // New shape: the cycle as the app now understands it.
+        'cycle'           => $c,
+        'cycle_phase'     => cycle_phase($year),
+        'cycle_frozen'    => cycle_is_frozen($year),
+        'clan_blind'      => booking_is_blind('clan', $year),
+        'priority_blind'  => booking_is_blind('priority', $year),
+
+        // Old field names, kept so nothing that still reads them breaks.
+        // priority_end is deliberately absent: priority no longer closes.
+        'clan_start'      => $c['clan_open'],
+        'clan_end'        => $c['clan_close'],
+        'clan_reveal'     => $c['clan_publish'],
+        'priority_start'  => $c['priority_open'],
+        'priority_reveal' => $c['priority_publish'],
+        'regular_start'   => $year . '-01-01',
     ]);
 }
 
