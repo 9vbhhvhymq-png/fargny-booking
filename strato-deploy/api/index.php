@@ -30,6 +30,10 @@ switch ($resource) {
 
     case 'bookings':
         require_once __DIR__ . '/bookings.php';
+        // Backstop for the scheduler, at most hourly and only when the
+        // external clock has missed something. Off by default.
+        require_once __DIR__ . '/notifications.php';
+        try { notify_fallback_tick(); } catch (Exception $e) {}
         handle_bookings($action, $id, $method);
         break;
 

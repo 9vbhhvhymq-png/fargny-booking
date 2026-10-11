@@ -367,3 +367,49 @@ function notify_calendar_link_html(string $lang): string {
          . '<a href="' . $url . '" style="color:#B85042;font-weight:600;">' . $label . '</a>'
          . $wa . '</p>';
 }
+
+// ---- The backstop ------------------------------------------------------
+// If the external schedule misses a day — a GitHub outage, a lapsed
+// secret, nobody noticing — a date-driven email would simply never go.
+// So a page load can also drive the scheduler, at most once an hour, and
+// only when something is genuinely overdue.
+//
+// Deliberately second string, not the main mechanism: it fires only when
+// somebody happens to open the site, which on a quiet day is nobody. It
+// exists so that a missed cron becomes a late email rather than a lost
+// one. Off unless scheduler_fallback is set to 1.
+function notify_fallback_tick() {
+    if (setting_get('scheduler_fallback', '0') !== '1') return;
+    if (!notifications_enabled()) return;              // nothing to send anyway
+
+    $last = setting_get('scheduler_last_tick', '');
+    if ($last !== '' && (time() - strtotime($last)) < 3600) return;
+
+    // Claim the hour before doing any work, so a burst of page loads
+    // cannot all decide to run at once.
+    setting_set('scheduler_last_tick', date('Y-m-d H:i:s'));
+
+    $lock = scheduler_lock_acquire(300);
+    if (!$lock) return;
+    try {
+        require_once __DIR__ . '/email.php';
+        require_once __DIR__ . '/notify_templates.php';
+        require_once __DIR__ . '/notify.php';
+        $year  = active_booking_year();
+        $today = date('Y-m-d');
+        foreach (notify_jobs($year) as $job) {
+            if (!$job['due'] || $today < $job['due']) continue;
+            $age = (int)floor((strtotime($today) - strtotime($job['due'])) / 86400);
+            if ($age > NOTIFY_STALE_AFTER_DAYS) continue;
+            $key = $job['key'] . '_' . $year;
+            if (notif_any_sent($key)) continue;
+            $tpl = $job['template'];
+            notify_broadcast($key, notify_audience($job['audience']),
+                function (array $m) use ($tpl, $year) { return notify_compose($tpl, $m, $year); });
+        }
+    } catch (Exception $e) {
+        // A page load must never fail because a mail did.
+    } finally {
+        scheduler_lock_release($lock);
+    }
+}

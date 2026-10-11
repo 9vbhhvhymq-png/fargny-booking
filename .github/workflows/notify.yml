@@ -1,0 +1,96 @@
+name: Send due notifications
+
+# The booking system's annual emails (kickoff, clan round opening,
+# publication, and so on) are date-driven, and Strato has no scheduler
+# this app can reach. This workflow is the clock: it pokes the endpoint
+# and the app decides whether anything is actually due.
+#
+# Hourly rather than every few minutes on purpose. Every send is recorded
+# in fargny_notifications_log and is safe to repeat, so the only cost of a
+# late run is the email arriving a little later in the day — and GitHub
+# delays scheduled jobs under load anyway, so a tight schedule would be
+# false precision.
+#
+# SETUP (both are needed, or this does nothing):
+#   1. Repository secret NOTIFY_TOKEN — Settings > Secrets and variables >
+#      Actions > New repository secret.
+#   2. The SAME value as NOTIFY_TOKEN in the server's .env file.
+#   Optionally secret NOTIFY_URL to override the default endpoint.
+#
+# Nothing is sent while "Sending is OFF" in Admin > Notifications, whatever
+# this workflow does — that switch is the real safety catch.
+
+on:
+  schedule:
+    - cron: '17 * * * *'     # hourly, off the hour to avoid the rush
+  workflow_dispatch:          # and a manual run from the Actions tab
+    inputs:
+      dry_run:
+        description: 'Report what would be sent, send nothing'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fargny-notify
+  cancel-in-progress: false
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Call the notification endpoint
+        env:
+          NOTIFY_TOKEN: ${{ secrets.NOTIFY_TOKEN }}
+          NOTIFY_URL: ${{ secrets.NOTIFY_URL }}
+          DRY: ${{ inputs.dry_run && '1' || '0' }}
+        run: |
+          set -uo pipefail
+
+          if [ -z "${NOTIFY_TOKEN:-}" ]; then
+            echo "::error::NOTIFY_TOKEN is not set. Add it under Settings > Secrets and variables > Actions, and put the same value in the server's .env."
+            exit 1
+          fi
+
+          URL="${NOTIFY_URL:-https://fargny.org/booking/api/notify/run}"
+          [ "$DRY" = "1" ] && URL="$URL?dry=1&token=$NOTIFY_TOKEN" || URL="$URL?token=$NOTIFY_TOKEN"
+
+          # Retry a few times: a shared host hiccup should not skip a day.
+          for attempt in 1 2 3; do
+            CODE=$(curl -sS -m 60 -o response.json -w '%{http_code}' "$URL" || echo 000)
+            [ "$CODE" = "200" ] && break
+            echo "attempt $attempt: HTTP $CODE"
+            sleep $((attempt * 10))
+          done
+
+          # Never print the URL: it carries the token.
+          echo "HTTP $CODE"
+          if [ "$CODE" != "200" ]; then
+            echo "::error::The notification endpoint returned HTTP $CODE after 3 attempts."
+            head -c 500 response.json || true
+            exit 1
+          fi
+
+          python3 - <<'PY'
+          import json
+          with open('response.json') as fh:
+              body = json.load(fh)
+          data = body.get('data', {})
+          print(f"today        : {data.get('today')}")
+          print(f"booking year : {data.get('booking_year')}")
+          print(f"sending on   : {data.get('enabled')}")
+          print(f"dry run      : {data.get('dry_run')}")
+          actions = data.get('actions') or []
+          if not actions:
+              print("nothing due")
+          for a in actions:
+              print("  ", json.dumps(a))
+          # A send that failed for some recipients is worth a warning in
+          # the run summary rather than a silent green tick.
+          for a in actions:
+              if a.get('failed'):
+                  print(f"::warning::{a.get('key')}: {a['failed']} recipient(s) failed")
+          PY
