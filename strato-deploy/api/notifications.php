@@ -347,10 +347,23 @@ function notify_recipients(bool $honourOptOut = false): array {
     }
 }
 
-// Just the way in, for templates whose own text already says the rest.
+// The sign-off line for templates whose own text already carries the
+// first-year note and the contact: the way in, and the number, on one
+// line. Both still come from settings rather than being written in.
 function notify_calendar_link_html(string $lang): string {
-    $url = htmlspecialchars(notify_app_url());
+    $url   = htmlspecialchars(notify_app_url());
+    $c     = notify_contact();
+    $digits= preg_replace('/[^0-9]/', '', (string)$c['whatsapp']);
     $label = $lang === 'nl' ? 'Open de kalender' : 'Open the calendar';
-    return '<p style="margin:20px 0 0 0;"><a href="' . $url
-         . '" style="color:#B85042;font-weight:600;font-size:14px;">' . $label . '</a></p>';
+    // +49 157 88611151 — grouped the way people read it, not as a blob.
+    $pretty = $digits !== ''
+        ? '+' . substr($digits, 0, 2) . ' ' . substr($digits, 2, 3) . ' ' . substr($digits, 5)
+        : '';
+    $wa = $digits !== ''
+        ? ' &middot; WhatsApp: <a href="https://wa.me/' . $digits
+          . '" style="color:#B85042;font-weight:600;">' . htmlspecialchars($pretty) . '</a>'
+        : '';
+    return '<p style="margin:20px 0 0 0;font-size:14px;color:#8B7D6B;">'
+         . '<a href="' . $url . '" style="color:#B85042;font-weight:600;">' . $label . '</a>'
+         . $wa . '</p>';
 }

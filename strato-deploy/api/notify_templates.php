@@ -48,7 +48,9 @@ heeft bijgehouden. Zij helpt nog met bestaande boekingen tot het einde van dit j
   deze verder dan drie maanden vooruit worden gemaakt. <strong>Let op:</strong> degene op wiens
   naam de stamboeking staat, heeft daarmee de eigen jokerboeking van dat jaar gebruikt.</li>
   <li style="font-size:15px;color:#2C1810;line-height:1.6;margin-bottom:8px;"><strong>Gewone boeking:</strong> alle andere verblijven kun je tot drie maanden
-  vooruit boeken, wie het eerst komt het eerst maalt.</li>
+  vooruit boeken, wie het eerst komt het eerst maalt. Zodra een verblijf binnen drie maanden
+  valt, kun je onder deze regels ook elke andere boeking wijzigen, ook stam- en jokerboekingen
+  (zie &ldquo;Wijzigen of annuleren&rdquo; hieronder).</li>
 </ul>
 
 <h3 style="font-size:15px;color:#2C1810;margin:24px 0 8px 0;">De kalender voor het komende jaar</h3>
@@ -88,11 +90,13 @@ elk moment inzetten, en hij staat dan meteen op de kalender.</p>
 
 <h3 style="font-size:15px;color:#2C1810;margin:24px 0 8px 0;">Wijzigen of annuleren</h3>
 <ul style="padding-left:20px;margin:0;">
-  <li style="font-size:15px;color:#2C1810;line-height:1.6;margin-bottom:8px;">Je kunt een stam- of jokerboeking <strong>wijzigen</strong> binnen de week waarin je
-  hebt geboekt, zolang de dagen vrij zijn.</li>
+  <li style="font-size:15px;color:#2C1810;line-height:1.6;margin-bottom:8px;"><strong>Meer dan drie maanden voor je verblijf:</strong> je kunt een stam- of
+  jokerboeking wijzigen binnen de week waarin je hebt geboekt, zolang de dagen vrij zijn. Het
+  blijft maximaal &eacute;&eacute;n week.</li>
+  <li style="font-size:15px;color:#2C1810;line-height:1.6;margin-bottom:8px;"><strong>Binnen drie maanden voor je verblijf:</strong> dan gelden de gewone
+  drie-maandenregels. Je kunt je boeking verschuiven, eerder aankomen of langer blijven, zolang
+  de dagen vrij zijn.</li>
   <li style="font-size:15px;color:#2C1810;line-height:1.6;margin-bottom:8px;">Je mag je verblijf altijd <strong>korter</strong> maken.</li>
-  <li style="font-size:15px;color:#2C1810;line-height:1.6;margin-bottom:8px;">Een stam- of jokerverblijf kan nooit <strong>langer</strong> zijn dan &eacute;&eacute;n
-  week in totaal.</li>
   <li style="font-size:15px;color:#2C1810;line-height:1.6;margin-bottom:8px;">Annuleer je <strong>helemaal</strong>, dan krijg je je jokerboeking terug. De
   vrijgekomen data worden eerst een week lang aangeboden aan familieleden die hun jokerboeking
   nog niet hebben gebruikt. Daarna kan iedereen ze boeken.</li>
@@ -115,7 +119,7 @@ gewoon een WhatsApp-bericht op
 <a href="https://wa.me/4915788611151" style="color:#B85042;font-weight:600;">+49 157 88611151</a>.
 Idee&euml;n voor verbetering zijn ook van harte welkom. We horen het liever vroeg dan laat.</p>
 
-<p style="font-size:15px;color:#2C1810;line-height:1.55;">Tot in Fargny!</p>
+<p style="font-size:15px;color:#2C1810;line-height:1.55;">Groet</p>
 <p style="font-size:15px;color:#2C1810;line-height:1.55;">Moritz</p>
 ',
         'body_en' => '
@@ -140,7 +144,9 @@ From 1 January, everything runs through the system.</p>
   than three months in advance. <strong>Note:</strong> the person whose name is on the clan
   booking has used their priority booking for that year.</li>
   <li style="font-size:15px;color:#2C1810;line-height:1.6;margin-bottom:8px;"><strong>Regular booking:</strong> All other stays can be booked up to three months
-  in advance, first come, first served.</li>
+  in advance, first come, first served. Once a stay is within three months, you can also change
+  any booking under these rules, including clan and priority bookings (see &ldquo;Changing or
+  cancelling&rdquo; below).</li>
 </ul>
 
 <h3 style="font-size:15px;color:#2C1810;margin:24px 0 8px 0;">The calendar for the coming year</h3>
@@ -180,10 +186,13 @@ later in the year, and it shows on the calendar straight away.</p>
 
 <h3 style="font-size:15px;color:#2C1810;margin:24px 0 8px 0;">Changing or cancelling</h3>
 <ul style="padding-left:20px;margin:0;">
-  <li style="font-size:15px;color:#2C1810;line-height:1.6;margin-bottom:8px;">You can <strong>change</strong> a clan or priority booking within the week you
-  booked, as long as the days are free.</li>
+  <li style="font-size:15px;color:#2C1810;line-height:1.6;margin-bottom:8px;"><strong>More than three months before your stay:</strong> you can change a clan or
+  priority booking within the week you booked, as long as the days are free. It stays at most
+  one week.</li>
+  <li style="font-size:15px;color:#2C1810;line-height:1.6;margin-bottom:8px;"><strong>Within three months of your stay:</strong> the regular three-month rules
+  apply. You can move your booking, arrive earlier or stay longer, as long as the days are
+  free.</li>
   <li style="font-size:15px;color:#2C1810;line-height:1.6;margin-bottom:8px;">You can always <strong>shorten</strong> your stay.</li>
-  <li style="font-size:15px;color:#2C1810;line-height:1.6;margin-bottom:8px;">A clan or priority stay can never be <strong>longer</strong> than one week in total.</li>
   <li style="font-size:15px;color:#2C1810;line-height:1.6;margin-bottom:8px;">If you <strong>cancel</strong> completely, you get your priority booking back. The
   freed dates are first offered for one week to family members who haven&rsquo;t used their
   priority booking yet. After that, anyone can book them.</li>
@@ -205,7 +214,7 @@ later in the year, and it shows on the calendar straight away.</p>
 WhatsApp message at <a href="https://wa.me/4915788611151" style="color:#B85042;font-weight:600;">+49 157 88611151</a>.
 Ideas for improvement are very welcome too. We&rsquo;d much rather hear it early.</p>
 
-<p style="font-size:15px;color:#2C1810;line-height:1.55;">See you in Fargny!</p>
+<p style="font-size:15px;color:#2C1810;line-height:1.55;">Cheers</p>
 <p style="font-size:15px;color:#2C1810;line-height:1.55;">Moritz</p>
 ',
     ],
