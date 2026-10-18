@@ -11,6 +11,20 @@
 // dates a year the button is a perfectly reasonable answer.
 // ============================================================
 
+// The shared secret an external scheduler presents.
+//
+// .env wins when it is set, which is the conventional place for a secret
+// on a server you can log into. But editing .env on shared hosting means
+// an FTP client and a password, so the same value can also be set from
+// the admin page and kept in the settings table. Security is the same
+// either way: only an admin can write that setting, and only somebody
+// with server access could edit .env.
+function notify_token(): string {
+    $fromEnv = (string)env('NOTIFY_TOKEN', '');
+    if ($fromEnv !== '') return $fromEnv;
+    return setting_get('notify_token', '');
+}
+
 // Which season is currently being booked. The cycle starts in the autumn
 // of the preceding year: in October 2026 the family is booking 2027.
 function active_booking_year(?string $today = null): int {
@@ -105,7 +119,7 @@ function notify_run() {
     if ($u && !empty($u['is_admin'])) $isAdmin = true;
 
     if (!$isAdmin) {
-        $expected = (string)env('NOTIFY_TOKEN', '');
+        $expected = notify_token();
         $token    = (string)($_GET['token'] ?? '');
         if ($expected === '' || !hash_equals($expected, $token)) {
             json_error('Not authorised', 403);

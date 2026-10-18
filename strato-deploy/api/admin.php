@@ -235,6 +235,11 @@ function admin_notifications() {
     $status['log']     = $log;
     $status['summary'] = array_values($summary);
     $status['contact'] = notify_contact();
+    // Shown so it can be copied into the GitHub secret. Admin-only, and
+    // the admin is the person who set it.
+    $status['notify_token']      = notify_token();
+    $status['notify_token_from'] = ((string)env('NOTIFY_TOKEN', '') !== '') ? 'env' : 'settings';
+    $status['scheduler_fallback'] = setting_get('scheduler_fallback', '0') === '1';
     json_success($status);
 }
 
@@ -304,7 +309,8 @@ function admin_notification_settings() {
     require_admin();
     $body = get_json_body();
     $allowed = ['notifications_enabled', 'mail_dry_run', 'broadcast_pause_ms',
-                'contact_name', 'contact_email', 'contact_whatsapp', 'app_url'];
+                'contact_name', 'contact_email', 'contact_whatsapp', 'app_url',
+                'notify_token', 'scheduler_fallback'];
     $saved = [];
     foreach ($allowed as $k) {
         if (!array_key_exists($k, $body)) continue;
