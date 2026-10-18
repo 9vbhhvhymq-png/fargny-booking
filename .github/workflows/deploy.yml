@@ -95,3 +95,130 @@ jobs:
                  ./strato-deploy/ /STRATO-apps/wordpress_01/app/booking/
           bye
           LFTP_EOF
+
+      # Puts NOTIFY_TOKEN into the server's .env without ever recreating
+      # the file: .env holds the database password, and losing it takes
+      # the site down. So the file is fetched, checked that it really is
+      # the .env we think it is, backed up on the server, edited locally
+      # and written back — and verified afterwards.
+      #
+      # Strato gives SFTP but no shell, so this goes over lftp's sftp://
+      # transport (SSH underneath) rather than running remote commands.
+      - name: Set NOTIFY_TOKEN in the server's .env
+        env:
+          SFTP_HOST: ${{ secrets.FTP_HOST }}
+          SFTP_USER: ${{ secrets.FTP_USER }}
+          LFTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          NOTIFY_TOKEN: ${{ secrets.NOTIFY_TOKEN }}
+        run: |
+          set -uo pipefail
+          # No `set -x` anywhere in this step: it would echo the token.
+
+          if [ -z "${NOTIFY_TOKEN:-}" ]; then
+            echo "::warning::NOTIFY_TOKEN secret is empty — leaving .env untouched."
+            exit 0
+          fi
+          # Belt and braces: mask it even if something echoes it by accident.
+          echo "::add-mask::$NOTIFY_TOKEN"
+
+          HOST="$(printf '%s' "$SFTP_HOST" | tr -d '[:space:]')"
+          USER_="$(printf '%s' "$SFTP_USER" | tr -d '[:space:]')"
+          REMOTE_DIR=/STRATO-apps/wordpress_01/app/booking
+          WORK="$(mktemp -d)"
+          chmod 700 "$WORK"
+          trap 'rm -rf "$WORK"' EXIT
+
+          run_lftp() {
+            timeout 180 lftp --env-password -u "$USER_" "sftp://$HOST" >/dev/null 2>"$WORK/err" <<LFTP
+          set sftp:auto-confirm yes
+          set net:timeout 20
+          set net:max-retries 2
+          $1
+          bye
+          LFTP
+          }
+
+          # 1. Fetch the current file.
+          if ! run_lftp "get $REMOTE_DIR/.env -o $WORK/env"; then
+            echo "::error::Could not download .env from the server."
+            sed -e "s/$NOTIFY_TOKEN/***/g" "$WORK/err" >&2 || true
+            exit 1
+          fi
+
+          # 2. Refuse to touch anything unless this really is the .env.
+          #    A truncated or wrong download must never become an upload.
+          if [ ! -s "$WORK/env" ]; then
+            echo "::error::Downloaded .env is empty. Refusing to write."
+            exit 1
+          fi
+          if ! grep -q '^DB_' "$WORK/env"; then
+            echo "::error::Downloaded file has no DB_ settings, so it is not the .env. Refusing to write."
+            exit 1
+          fi
+          BEFORE_LINES=$(wc -l < "$WORK/env")
+
+          # 3. Keep a dated copy on the server before changing anything.
+          STAMP=$(date -u +%Y%m%d-%H%M%S)
+          run_lftp "put $WORK/env -o $REMOTE_DIR/.env.bak-$STAMP" \
+            || echo "::warning::Could not write a backup copy; continuing."
+
+          # 4. Edit locally. Replaces an existing NOTIFY_TOKEN line, or
+          #    appends one — guaranteeing it starts on a line of its own
+          #    even when the file has no trailing newline.
+          python3 - "$WORK/env" "$WORK/new" <<'PY'
+          import os, sys
+          src, dst = sys.argv[1], sys.argv[2]
+          token = os.environ["NOTIFY_TOKEN"]
+          with open(src, "r", encoding="utf-8", errors="surrogateescape") as fh:
+              text = fh.read()
+          lines = text.splitlines()
+          replaced = False
+          for i, line in enumerate(lines):
+              if line.startswith("NOTIFY_TOKEN="):
+                  lines[i] = "NOTIFY_TOKEN=" + token
+                  replaced = True
+                  break
+          if not replaced:
+              lines.append("NOTIFY_TOKEN=" + token)
+          out = "\n".join(lines) + "\n"
+          with open(dst, "w", encoding="utf-8", errors="surrogateescape") as fh:
+              fh.write(out)
+          # Prints nothing: the only message this step emits is the single
+          # "NOTIFY_TOKEN set" / "NOTIFY_TOKEN updated" line at the end.
+          PY
+          ACTION=$(python3 - "$WORK/env" <<'PY'
+          import sys
+          with open(sys.argv[1], encoding="utf-8", errors="surrogateescape") as fh:
+              print("updated" if any(l.startswith("NOTIFY_TOKEN=") for l in fh) else "set")
+          PY
+          )
+
+          # 5. Sanity-check the new file before it leaves the runner.
+          if ! grep -q '^DB_' "$WORK/new" || ! grep -q '^NOTIFY_TOKEN=' "$WORK/new"; then
+            echo "::error::The edited file failed its own check. Nothing was uploaded."
+            exit 1
+          fi
+          AFTER_LINES=$(wc -l < "$WORK/new")
+          if [ "$AFTER_LINES" -lt "$BEFORE_LINES" ]; then
+            echo "::error::The edited file lost lines ($BEFORE_LINES -> $AFTER_LINES). Nothing was uploaded."
+            exit 1
+          fi
+
+          # 6. Write it back.
+          if ! run_lftp "put $WORK/new -o $REMOTE_DIR/.env"; then
+            echo "::error::Upload failed. A backup is on the server as .env.bak-$STAMP."
+            sed -e "s/$NOTIFY_TOKEN/***/g" "$WORK/err" >&2 || true
+            exit 1
+          fi
+
+          # 7. Read it back and confirm, without printing any of it.
+          if ! run_lftp "get $REMOTE_DIR/.env -o $WORK/check"; then
+            echo "::warning::Could not re-read .env to verify."
+          else
+            if grep -q '^NOTIFY_TOKEN=' "$WORK/check" && grep -q '^DB_' "$WORK/check"; then
+              echo "NOTIFY_TOKEN $ACTION"
+            else
+              echo "::error::Verification failed. Restore from .env.bak-$STAMP on the server."
+              exit 1
+            fi
+          fi
