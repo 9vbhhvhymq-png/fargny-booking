@@ -184,6 +184,14 @@ function auth_register() {
     $user = $stmt->fetch();
 
     $token = create_session($userId);
+    // Someone joining mid-cycle has missed the announcements already
+    // sent. Give them those now, under the same keys, so they are never
+    // sent twice. Wrapped: a registration must not fail because of mail.
+    try {
+        require_once __DIR__ . '/notify.php';
+        notify_catch_up($user);
+    } catch (Throwable $e) {}
+
     json_success(format_user_response($user, $token), 201);
 }
 
@@ -297,6 +305,11 @@ function auth_register_family_member(array $body) {
     $stmt = $db->prepare("SELECT * FROM fargny_users WHERE id = ? LIMIT 1");
     $stmt->execute([$userId]);
     $user = $stmt->fetch();
+
+    try {
+        require_once __DIR__ . '/notify.php';
+        notify_catch_up($user);
+    } catch (Throwable $e) {}
 
     json_success(format_user_response($user, create_session($userId)), 201);
 }

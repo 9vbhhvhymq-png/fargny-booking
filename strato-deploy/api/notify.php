@@ -82,12 +82,15 @@ function notify_status(?string $today = null): array {
     $year     = active_booking_year($todayIso);
     $out      = [];
     foreach (notify_jobs($year) as $job) {
-        $key  = $job['key'] . '_' . $year;
-        $due  = $job['due'];
-        $sent = notif_any_sent($key);
+        $key     = $job['key'] . '_' . $year;
+        $due     = $job['due'];
+        $members = notify_audience($job['audience']);
+        $sent    = notif_any_sent($key);
+        $pending = notif_pending_count($key, $members);
         $ageDays = $due ? (int)floor((strtotime($todayIso) - strtotime($due)) / 86400) : null;
         $state = 'scheduled';
-        if ($sent)                                        $state = 'sent';
+        if ($sent && !$pending)                           $state = 'sent';
+        elseif ($sent)                                    $state = 'retry ' . $pending . ' left';
         elseif ($due === null)                            $state = 'no date';
         elseif ($todayIso < $due)                         $state = 'scheduled';
         elseif ($ageDays > NOTIFY_STALE_AFTER_DAYS)       $state = 'skipped (too old)';
@@ -99,7 +102,8 @@ function notify_status(?string $today = null): array {
             'audience'   => $job['audience'],
             'due_date'   => $due,
             'state'      => $state,
-            'recipients' => count(notify_audience($job['audience'])),
+            'recipients' => count($members),
+            'pending'    => $pending,
         ];
     }
     return ['today' => $todayIso, 'booking_year' => $year,
@@ -159,14 +163,20 @@ function notify_run() {
                 continue;
             }
 
-            if (notif_any_sent($key)) {
-                $actions[] = ['key' => $key, 'skipped' => 'already sent'];
+            $members = notify_audience($job['audience']);
+
+            // Skip when there is nothing left to do — not merely because
+            // somebody received it. A run that failed on two addresses
+            // must be able to come back for those two.
+            $pending = notif_pending_count($key, $members);
+            if (!$pending) {
+                $actions[] = ['key' => $key,
+                              'skipped' => $members ? 'already sent' : 'no recipients'];
                 continue;
             }
 
-            $members = notify_audience($job['audience']);
             if ($dry) {
-                $actions[] = ['key' => $key, 'would_send_to' => count($members)];
+                $actions[] = ['key' => $key, 'would_send_to' => $pending];
                 continue;
             }
 
@@ -187,4 +197,63 @@ function notify_run() {
         'enabled'      => notifications_enabled(),
         'actions'      => $actions,
     ]);
+}
+
+// ---- Catching up a late arrival ---------------------------------------
+// Somebody who registers in the middle of the cycle has missed whatever
+// has already gone out, and those announcements are how the rounds are
+// explained. So on registration they get the ones already sent, provided
+// they were meant to receive them.
+//
+// Each goes out under the SAME notification key as the broadcast, so the
+// log treats it as that person's copy: a later re-run cannot send it to
+// them twice, and the admin page shows one row per recipient as usual.
+
+// Would this member have been in the audience for that job?
+function notify_audience_includes(string $audience, array $member): bool {
+    if (trim((string)($member['email'] ?? '')) === '') return false;
+    if ($audience === 'shareholders') {
+        // A family member is left out of the rounds they cannot enter.
+        return user_role($member) !== 'family_member';
+    }
+    return true;
+}
+
+// Send one new member everything already sent for the current cycle.
+// Returns a tally; never throws, because a registration must not fail
+// because an email did.
+function notify_catch_up(array $member): array {
+    $tally = ['sent' => 0, 'already_sent' => 0, 'failed' => 0,
+              'dry_run' => 0, 'skipped' => 0, 'blocked' => 0];
+    try {
+        require_once __DIR__ . '/email.php';
+        require_once __DIR__ . '/notifications.php';
+        require_once __DIR__ . '/notify_templates.php';
+
+        // The master switch governs this exactly as it governs a
+        // broadcast: while sending is off, nothing leaves the building.
+        if (!notifications_enabled()) { $tally['blocked'] = 1; return $tally; }
+
+        $year = active_booking_year();
+        foreach (notify_jobs($year) as $job) {
+            $key = $job['key'] . '_' . $year;
+            // Only what the family has actually already received. A job
+            // whose date has not arrived will reach them with everyone
+            // else, and sending it early would be worse than late.
+            if (!notif_any_sent($key)) { $tally['skipped']++; continue; }
+            if (!notify_audience_includes($job['audience'], $member)) { $tally['skipped']++; continue; }
+
+            [$subject, $html] = notify_compose($job['template'], $member, $year);
+            $status = notif_send_once($key, $member, $subject, $html);
+            if (!isset($tally[$status])) $tally[$status] = 0;
+            $tally[$status]++;
+        }
+    } catch (Throwable $e) {
+        // Swallowed on purpose: see above. Throwable, not Exception —
+        // a TypeError in a template would otherwise abort the request
+        // after the account row was written, leaving somebody with an
+        // account and a registration that looked like it failed.
+        $tally['failed']++;
+    }
+    return $tally;
 }

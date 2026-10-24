@@ -189,6 +189,40 @@ function notif_any_sent(string $key): bool {
     }
 }
 
+// How many of these people still need this announcement: everyone with no
+// row at all, plus anyone whose last attempt failed and may be tried again.
+//
+// A broadcast that reached most of the family but failed on two addresses
+// is not finished. notif_claim() is willing to retry those two; without
+// this, the caller never asks, because somebody did receive it.
+function notif_pending_count(string $key, array $members): int {
+    ensure_notification_tables();
+    $seen = [];
+    try {
+        $stmt = get_db()->prepare("
+            SELECT recipient_email, status, attempts
+            FROM fargny_notifications_log WHERE notification_key = ?
+        ");
+        $stmt->execute([$key]);
+        foreach ($stmt->fetchAll() ?: [] as $r) {
+            $seen[strtolower($r['recipient_email'])] = $r;
+        }
+    } catch (Exception $e) {
+        // Unreadable log: assume it has all gone out rather than risk
+        // sending it all again. Same reasoning as notif_any_sent().
+        return 0;
+    }
+    $n = 0;
+    foreach ($members as $m) {
+        $email = strtolower(trim((string)($m['email'] ?? '')));
+        if ($email === '') continue;
+        $row = $seen[$email] ?? null;
+        if (!$row) { $n++; continue; }
+        if ($row['status'] === 'failed' && (int)$row['attempts'] < NOTIF_MAX_ATTEMPTS) $n++;
+    }
+    return $n;
+}
+
 // ---- Templates --------------------------------------------------------
 
 // Stored body for a template, or null when it has never been edited —
