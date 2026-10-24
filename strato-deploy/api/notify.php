@@ -243,7 +243,9 @@ function notify_catch_up(array $member): array {
             if (!notif_any_sent($key)) { $tally['skipped']++; continue; }
             if (!notify_audience_includes($job['audience'], $member)) { $tally['skipped']++; continue; }
 
-            [$subject, $html] = notify_compose($job['template'], $member, $year);
+            // Their copy says so, and says when the family got it.
+            $note = notify_catch_up_note_html(notif_first_sent_at($key));
+            [$subject, $html] = notify_compose($job['template'], $member, $year, $note);
             $status = notif_send_once($key, $member, $subject, $html);
             if (!isset($tally[$status])) $tally[$status] = 0;
             $tally[$status]++;

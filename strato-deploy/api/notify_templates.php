@@ -290,6 +290,28 @@ function notify_format_date(string $iso, string $lang): string {
     return $lang === 'nl' ? "$d {$monthsNl[$m]}" : "$d {$monthsEn[$m]}";
 }
 
+// The line at the top of a copy posted to somebody who has only just
+// registered. Without it, a letter announcing dates that have already
+// gone by reads as though the system has lost track of the date.
+//
+// It sits above the letter in both languages at once, rather than being
+// split across the Dutch and English halves: it is a note about this
+// copy, not part of what was written to the family.
+function notify_catch_up_note_html(?string $sentIso): string {
+    $nl = 'Je ontvangt dit bericht omdat je je net hebt aangemeld.';
+    $en = 'You are receiving this because you have just registered.';
+    if ($sentIso) {
+        $nl .= ' Het is op ' . notify_format_date($sentIso, 'nl')
+             . ' naar de familie gestuurd, dus sommige data zijn misschien al geweest.';
+        $en .= ' It was sent to the family on ' . notify_format_date($sentIso, 'en')
+             . ', so some of the dates in it may already have passed.';
+    }
+    return '<p style="background:#F7F3EE;border-left:3px solid #E0D8CF;color:#8B7D6B;'
+         . 'font-size:13px;line-height:1.5;padding:10px 14px;margin:0 0 20px 0;'
+         . 'border-radius:4px;">' . htmlspecialchars($nl) . '<br>'
+         . htmlspecialchars($en) . '</p>';
+}
+
 // Everything a template may refer to, for one recipient and one year.
 function notify_vars(array $member, int $year, string $lang): array {
     $c = cycle_dates($year);
@@ -305,7 +327,9 @@ function notify_vars(array $member, int $year, string $lang): array {
 
 // Subject + body for one recipient: the stored template if one exists,
 // otherwise the built-in default. Dutch and English in one message.
-function notify_compose(string $key, array $member, int $year): array {
+// $noteHtml is placed above the letter, inside the wrapper: the catch-up
+// note, and nothing else so far.
+function notify_compose(string $key, array $member, int $year, string $noteHtml = ''): array {
     $defaults = notify_default_templates();
     $stored   = template_get($key);
     $d        = $defaults[$key] ?? ['subject_nl'=>'','subject_en'=>'','body_nl'=>'','body_en'=>''];
@@ -340,5 +364,5 @@ function notify_compose(string $key, array $member, int $year): array {
 
     // No subtitle: the wrapper already shows "Fargny", and the body
     // carries its own headings in both languages.
-    return [$subject, email_template('', $body)];
+    return [$subject, email_template('', $noteHtml . $body)];
 }

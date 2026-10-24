@@ -189,6 +189,22 @@ function notif_any_sent(string $key): bool {
     }
 }
 
+// The day this announcement went to the family: the earliest send that
+// actually happened. Used to tell a late arrival when the rest of the
+// family read it. Null when nothing has gone out.
+function notif_first_sent_at(string $key): ?string {
+    ensure_notification_tables();
+    try {
+        $stmt = get_db()->prepare("
+            SELECT MIN(sent_at) AS first_sent FROM fargny_notifications_log
+            WHERE notification_key = ? AND status IN ('sent','dry_run')
+        ");
+        $stmt->execute([$key]);
+        $row = $stmt->fetch();
+        return ($row && !empty($row['first_sent'])) ? substr($row['first_sent'], 0, 10) : null;
+    } catch (Exception $e) { return null; }
+}
+
 // How many of these people still need this announcement: everyone with no
 // row at all, plus anyone whose last attempt failed and may be tried again.
 //
