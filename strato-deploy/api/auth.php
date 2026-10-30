@@ -138,6 +138,10 @@ function auth_register() {
         auth_register_family_member($body);
         return;
     }
+    if (($body['role'] ?? '') === 'viewer') {
+        auth_register_viewer($body);
+        return;
+    }
 
     $shareholderId = (int)($body['shareholder_id'] ?? 0);
     $email = strtolower(trim($body['email'] ?? ''));
@@ -310,6 +314,51 @@ function auth_register_family_member(array $body) {
         require_once __DIR__ . '/notify.php';
         notify_catch_up($user);
     } catch (Throwable $e) {}
+
+    json_success(format_user_response($user, create_session($userId)), 201);
+}
+
+// Somebody who is not family at all: no shareholder to pick, nobody to be
+// related to, no branch of the family. They give their name and sign in to
+// look. The family_member role carries the view-only rule, so this account
+// cannot create or change a booking — the same server-side check, not a
+// hidden button. The registration gate still stands in front of all this.
+function auth_register_viewer(array $body) {
+    $name     = trim($body['display_name'] ?? '');
+    $email    = strtolower(trim($body['email'] ?? ''));
+    $password = $body['password'] ?? '';
+
+    if (!$name || !$email || !$password) {
+        json_error('Name, email and password are required');
+    }
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) json_error('Invalid email address');
+    if (strlen($password) < 8) json_error('Password must be at least 8 characters');
+
+    $db = get_db();
+    ensure_role_columns();
+    $branchId = ensure_guest_branch();
+
+    $stmt = $db->prepare("SELECT id FROM fargny_users WHERE email = ? LIMIT 1");
+    $stmt->execute([$email]);
+    if ($stmt->fetch()) json_error('Email already in use');
+
+    $hash = password_hash($password, PASSWORD_BCRYPT);
+    $db->prepare("
+        INSERT INTO fargny_users
+            (display_name, email, password_hash, branch_id, is_admin, role, connected_shareholder_id)
+        VALUES (?, ?, ?, ?, 0, 'family_member', NULL)
+    ")->execute([$name, $email, $hash, $branchId]);
+    $userId = (int)$db->lastInsertId();
+
+    $db->prepare("UPDATE fargny_users SET last_login = NOW() WHERE id = ?")->execute([$userId]);
+
+    $stmt = $db->prepare("SELECT * FROM fargny_users WHERE id = ? LIMIT 1");
+    $stmt->execute([$userId]);
+    $user = $stmt->fetch();
+
+    // No catch-up mail: the announcements explain the family's booking
+    // rounds, which is not this person's business and not something they
+    // can take part in.
 
     json_success(format_user_response($user, create_session($userId)), 201);
 }

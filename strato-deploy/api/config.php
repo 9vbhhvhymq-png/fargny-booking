@@ -671,6 +671,37 @@ function is_family_member(array $user): bool {
     return user_role($user) === 'family_member';
 }
 
+// ---- People who are not family at all ----------------------------------
+// Somebody who is neither a shareholder nor a relative, but who is meant
+// to see the calendar: a caretaker, a neighbour, a friend of the house.
+// They get the family_member role, because that is what already enforces
+// view-only everywhere, and this branch is what says they are not kin.
+//
+// Every user row needs a branch (NOT NULL, foreign key), and the nine
+// family branches are the nine siblings — none of them fits. So there is
+// one more, outside the family numbering so the family can still add a
+// tenth branch of their own without colliding with it.
+const GUEST_BRANCH_ID = 99;
+
+function ensure_guest_branch(): int {
+    static $done = false;
+    if (!$done) {
+        try {
+            get_db()->prepare("
+                INSERT INTO fargny_branches (id, name, color) VALUES (?, 'Gast', '#8B7D6B')
+                ON DUPLICATE KEY UPDATE name = VALUES(name)
+            ")->execute([GUEST_BRANCH_ID]);
+            $done = true;
+        } catch (Exception $e) { /* caller still gets the id; the FK will complain */ }
+    }
+    return GUEST_BRANCH_ID;
+}
+
+// Not a relative — view-only, and outside the family's own correspondence.
+function is_guest_viewer(array $user): bool {
+    return (int)($user['branch_id'] ?? 0) === GUEST_BRANCH_ID;
+}
+
 // Family members may look, sign up for events and join shared bookings,
 // but they cannot create or change bookings, events or payments.
 function require_shareholder(string $message = 'Family members cannot create bookings'): array {

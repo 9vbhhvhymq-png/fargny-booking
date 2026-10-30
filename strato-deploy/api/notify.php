@@ -212,6 +212,8 @@ function notify_run() {
 // Would this member have been in the audience for that job?
 function notify_audience_includes(string $audience, array $member): bool {
     if (trim((string)($member['email'] ?? '')) === '') return false;
+    // Somebody who is not family is in no audience at all.
+    if (is_guest_viewer($member)) return false;
     if ($audience === 'shareholders') {
         // A family member is left out of the rounds they cannot enter.
         return user_role($member) !== 'family_member';

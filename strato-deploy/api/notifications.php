@@ -386,13 +386,18 @@ function notifications_enabled(): bool {
 // rounds are run — so only the recurring mail honours the opt-out.
 function notify_recipients(bool $honourOptOut = false): array {
     ensure_profile_columns();
-    $sql = "SELECT id, display_name, email, branch_id FROM fargny_users WHERE email <> ''";
+    // Family only: these letters are the family's own business, and
+    // somebody who is not kin cannot take part in the rounds they
+    // describe. Drop the branch clause to include them.
+    $base = "SELECT id, display_name, email, branch_id FROM fargny_users
+             WHERE email <> '' AND branch_id <> " . GUEST_BRANCH_ID;
+    $sql  = $base;
     if ($honourOptOut) $sql .= " AND (notify_opt_out IS NULL OR notify_opt_out = 0)";
     $sql .= " ORDER BY display_name";
     try { return get_db()->query($sql)->fetchAll() ?: []; }
     catch (Exception $e) {
-        try { return get_db()->query("SELECT id, display_name, email, branch_id
-                                      FROM fargny_users WHERE email <> ''")->fetchAll() ?: []; }
+        // No notify_opt_out column yet. Still never the guests.
+        try { return get_db()->query($base)->fetchAll() ?: []; }
         catch (Exception $e2) { return []; }
     }
 }
