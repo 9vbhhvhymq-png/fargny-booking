@@ -55,6 +55,7 @@ switch ($resource) {
 
     case 'admin':
         require_once __DIR__ . '/admin.php';
+        require_once __DIR__ . '/bookings.php'; // format_booking() for the cancellations list
         handle_admin($action, $id, $method);
         break;
 
